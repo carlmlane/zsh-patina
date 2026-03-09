@@ -41,6 +41,36 @@ In contrast to other ZSH syntax highlighters (e.g. [zsh-syntax-highlighting](htt
    exec zsh
    ```
 
+## Configuration
+
+zsh-patina can be configured through an optional configuration file at `~/.config/zsh-patina/config.toml`. If the file doesn't exist, the plugin uses the default settings shown below.
+
+**Example configuration:**
+
+```toml
+[highlighting]
+# For performance reasons, highlighting is disabled for very long lines. This
+# option specifies the maximum length of a line (in bytes) up to which
+# highlighting is applied.
+max_line_length = 20000
+
+# The maximum time (in milliseconds) to spend on highlighting a command. If
+# highlighting takes longer, it will be aborted and the command will be
+# partially highlighted.
+#
+# Note that the timeout only applies to multi-line commands. Highlighting cannot
+# be aborted in the middle of a line. If you often deal with long lines that
+# take longer to highlight than the timeout, consider reducing `max_line_length`.
+timeout_ms = 500
+```
+
+After changing the configuration, restart the daemon with:
+
+```shell
+~/.zsh-patina/target/release/zsh-patina stop
+~/.zsh-patina/target/release/zsh-patina start
+```
+
 ## How to remove the plugin
 
 In the unlikely case you don't like zsh-patina ☹️, you can remove it as follows:
@@ -61,7 +91,7 @@ In the unlikely case you don't like zsh-patina ☹️, you can remove it as foll
 
 ## Contribute
 
-I mostly built the plugin for myself because I wasn't satisfied with existing solutions (in terms of accuracy and performance). It doesn't have many features and is not particularly configurable yet. It does one job, and it does it well IMHO.
+I mostly built the plugin for myself because I wasn't satisfied with existing solutions (in terms of accuracy and performance). It doesn't have many features and is not particularly [configurable](#configuration) yet. It does one job, and it does it well IMHO.
 
 If you like the plugin and want to add a feature or found a bug, feel free to contribute. **Issue reports and pull requests are more than welcome!**
 
