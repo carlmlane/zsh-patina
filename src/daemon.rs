@@ -237,7 +237,7 @@ pub fn start_daemon(data_dir: &Path, config: &Config) -> Result<()> {
         .with_context(|| format!("Unable to bind socket {socket_path:?}"))?;
 
     // accept connections
-    let pool = ThreadPoolBuilder::new().num_threads(0).build().unwrap();
+    let pool = ThreadPoolBuilder::new().num_threads(4).build().unwrap();
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
