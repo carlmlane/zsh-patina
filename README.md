@@ -2,11 +2,11 @@
 
 **$ A blazingly fast ZSH plugin performing syntax highlighting of your command line while you type 🌈**
 
-The plugin spawns a small background daemon written in Rust. The daemon is shared between ZSH sessions and caches the syntax definition and color theme. Commands of typical length are highlighted in **less than a millisecond**. Extremely long commands only take a few milliseconds.
+The plugin spawns a small background daemon written in Rust. The daemon is shared between ZSH sessions and caches the syntax definition and color theme. Typical commands are highlighted in **less than a millisecond**. Extremely long commands only take a few milliseconds.
 
 Internally, the plugin uses [syntect](https://github.com/trishume/syntect/), which provides **high-quality syntax highlighting** based on [Sublime Text](https://www.sublimetext.com/) syntax definitions. The built-in theme uses the eight ANSI colors and is compatible with all terminal emulators.
 
-In contrast to other ZSH syntax highlighters (e.g. [zsh-syntax-highlighting](https://github.com/zsh-users/zsh-syntax-highlighting/) or [fast-syntax-highlighting](https://github.com/zdharma-continuum/fast-syntax-highlighting)), which use different colors to indicate whether a command or a directory/file exists, zsh-patina performs **static highlighting that does not change while you type**. This way, you get a similar experience to editing code in your IDE.
+In contrast to other ZSH syntax highlighters (e.g. [zsh-syntax-highlighting](https://github.com/zsh-users/zsh-syntax-highlighting/) or [fast-syntax-highlighting](https://github.com/zdharma-continuum/fast-syntax-highlighting)), which use different colors to indicate whether a command or a directory/file exists, zsh-patina performs **static highlighting that solely depends on the characters you enter**. This way, you get a similar experience to editing code in your IDE.
 
 ## Examples
 
