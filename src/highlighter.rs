@@ -47,19 +47,24 @@ pub struct Span {
 }
 
 pub struct Highlighter {
+    max_line_length: usize,
     syntax_set: SyntaxSet,
     theme: Theme,
 }
 
 impl Highlighter {
-    pub fn new() -> Self {
+    pub fn new(max_line_length: usize) -> Self {
         let syntax_set = SyntaxSet::load_defaults_newlines();
 
         let theme_str = include_str!("theme.tmTheme");
         let mut cursor = Cursor::new(theme_str);
         let theme = ThemeSet::load_from_reader(&mut cursor).expect("Unable to load theme");
 
-        Self { syntax_set, theme }
+        Self {
+            max_line_length,
+            syntax_set,
+            theme,
+        }
     }
 
     pub fn highlight(&self, command: &str) -> Vec<Span> {
@@ -88,6 +93,11 @@ impl Highlighter {
         let mut i = 0;
         let mut result = Vec::new();
         for line in LinesWithEndings::from(command.trim_ascii_end()) {
+            if line.len() > self.max_line_length {
+                // skip lines that are too long
+                continue;
+            }
+
             let ranges: Vec<(Style, &str)> = h.highlight_line(line, &self.syntax_set).unwrap();
 
             for r in ranges {

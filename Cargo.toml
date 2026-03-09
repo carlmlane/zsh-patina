@@ -7,6 +7,8 @@ license = "MIT"
 [dependencies]
 anyhow = "1.0.102"
 clap = { version = "4.5.60", features = ["derive", "wrap_help"] }
+figment = { version = "0.10.19", features = ["toml"] }
 libc = "0.2.182"
 rayon = "1.11.0"
+serde = { version = "1.0.228", features = ["derive"] }
 syntect = { version = "5.3.0", default-features = false, features = ["parsing", "default-syntaxes", "plist-load", "regex-fancy"] }

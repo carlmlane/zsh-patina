@@ -9,7 +9,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::highlighter::Highlighter;
+use crate::{Config, highlighter::Highlighter};
 
 fn pid_path(data_dir: &Path) -> PathBuf {
     data_dir.join("daemon.pid")
@@ -159,7 +159,7 @@ fn handle_connection(mut stream: UnixStream, highlighter: Arc<Highlighter>) -> R
     Ok(())
 }
 
-pub fn start_daemon(data_dir: &Path) -> Result<()> {
+pub fn start_daemon(data_dir: &Path, config: &Config) -> Result<()> {
     let pid_file = pid_path(data_dir);
 
     if let Some(pid) = read_pid(&pid_file)
@@ -170,7 +170,7 @@ pub fn start_daemon(data_dir: &Path) -> Result<()> {
     }
 
     // initialize highlighter
-    let highlighter = Arc::new(Highlighter::new());
+    let highlighter = Arc::new(Highlighter::new(config.max_line_length));
 
     // Make sure the data directory exists
     fs::create_dir_all(data_dir).context("Unable to create data directory")?;
