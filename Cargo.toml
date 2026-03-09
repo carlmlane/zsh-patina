@@ -9,4 +9,4 @@ anyhow = "1.0.102"
 clap = { version = "4.5.60", features = ["derive", "wrap_help"] }
 libc = "0.2.182"
 rayon = "1.11.0"
-syntect = { version = "5.3.0", default-features = false, features = ["parsing", "default-syntaxes", "plist-load", "regex-onig"] }
+syntect = { version = "5.3.0", default-features = false, features = ["parsing", "default-syntaxes", "plist-load", "regex-fancy"] }
