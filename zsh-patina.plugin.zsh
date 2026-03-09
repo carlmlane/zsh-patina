@@ -34,10 +34,29 @@ _zsh_patina() {
         [[ ! -S "$socket_path" ]] && return
     fi
 
-    # Split buffer into lines
+    # Split pre-buffer into lines. In a multi-line input at the secondary
+    # prompt, the pre-buffer contains the lines before the one the cursor is
+    # currently in.
+    local pre_count
+    local -a pre_lines
+    if [[ -n "$PREBUFFER" ]]; then
+        pre_lines=("${(@f)PREBUFFER}")
+        pre_count=${#pre_lines}
+    else
+        pre_lines=()
+        pre_count=0
+    fi
+
+    # Split edit buffer into lines
+    local count
     local -a lines
-    lines=("${(@f)BUFFER}")
-    local count=${#lines}
+    if [[ -n "$BUFFER" ]]; then
+        lines=("${(@f)BUFFER}")
+        count=${#lines}
+    else
+        lines=()
+        count=0
+    fi
 
     if ! zsocket "$socket_path" 2>/dev/null; then
         print -u2 "zsh-patina: failed to connect to socket at $socket_path"
@@ -47,10 +66,17 @@ _zsh_patina() {
 
     {
         # send header
-        print -r -- "term_cols=$COLUMNS term_rows=$LINES cursor=$CURSOR line_count=$count"
+        print -r -- "term_cols=$COLUMNS term_rows=$LINES cursor=$CURSOR pre_buffer_line_count=$pre_count buffer_line_count=$count"
+
+        # send pre-buffer lines
+        if (( pre_count != 0 )); then
+            print -r -- "$PREBUFFER"
+        fi
 
         # send lines
-        print -r -- "$BUFFER"
+        if (( count != 0 )); then
+            print -r -- "$BUFFER"
+        fi
     } >&$fd || {
         print -u2 "zsh-patina: Write to socket failed"
         exec {fd}>&-

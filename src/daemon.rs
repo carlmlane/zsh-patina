@@ -43,7 +43,8 @@ fn handle_connection(mut stream: UnixStream, highlighter: Arc<Highlighter>) -> R
     let mut term_cols = 1000;
     let mut term_rows = 1000;
     let mut cursor = 0;
-    let mut line_count = 0;
+    let mut pre_buffer_line_count = 0;
+    let mut buffer_line_count = 0;
     for h in header.split_ascii_whitespace() {
         let (key, value) = h
             .split_once("=")
@@ -64,21 +65,39 @@ fn handle_connection(mut stream: UnixStream, highlighter: Arc<Highlighter>) -> R
                     .parse::<usize>()
                     .context("Unable to parse cursor position")?;
             }
-            "line_count" => {
-                line_count = value
+            "pre_buffer_line_count" => {
+                pre_buffer_line_count = value
                     .parse::<usize>()
-                    .context("Unable to parse number of lines")?;
+                    .context("Unable to parse number of lines in pre-buffer")?;
+            }
+            "buffer_line_count" => {
+                buffer_line_count = value
+                    .parse::<usize>()
+                    .context("Unable to parse number of lines in buffer")?;
             }
             _ => {}
         }
     }
 
-    // read lines
+    // read pre-buffer lines
     let mut lines = String::new();
+    let mut pre_buffer_total_len = 0;
+    for _ in 0..pre_buffer_line_count {
+        let mut line = String::new();
+        reader.read_line(&mut line).context("Unable to read line")?;
+        lines.push_str(&line);
+
+        // this is O(n) but necessary in case the command contains
+        // multi-byte characters
+        let line_len = line.chars().count();
+        pre_buffer_total_len += line_len;
+    }
+
+    // read lines
     let mut total_len = 0;
     let mut line_lengths = Vec::new();
     let mut cursor_line = 0;
-    for i in 0..line_count {
+    for i in 0..buffer_line_count {
         let mut line = String::new();
         reader.read_line(&mut line).context("Unable to read line")?;
         lines.push_str(&line);
@@ -113,12 +132,25 @@ fn handle_connection(mut stream: UnixStream, highlighter: Arc<Highlighter>) -> R
         .sum::<usize>()
         .min(cursor.saturating_add(term_cols * term_rows));
 
-    // write response
+    // perform highlighting
     let result = highlighter.highlight(&lines);
-    for s in result.iter() {
-        if s.end <= min || s.start >= max {
+
+    for mut s in result.into_iter() {
+        if s.end <= pre_buffer_total_len {
+            // skip spans in the pre-buffer
             continue;
         }
+
+        // subtract pre-buffer offset
+        s.start = s.start.saturating_sub(pre_buffer_total_len);
+        s.end = s.end.saturating_sub(pre_buffer_total_len);
+
+        if s.end <= min || s.start >= max {
+            // skip spans outside the current terminal window
+            continue;
+        }
+
+        // write response
         stream
             .write_all(format!("{} {} fg={}\n", s.start, s.end, s.foreground_color).as_bytes())
             .context("Unable to send response")?;
