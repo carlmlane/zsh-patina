@@ -26,7 +26,7 @@ _zsh_patina() {
     local socket_path
     socket_path="$HOME/.local/share/zsh-patina/daemon.sock"
 
-    # if the socket is gone the daemon has crashed – try to restart it once
+    # if the socket does not exist, the daemon is stopped – try to start it
     if [[ ! -S "$socket_path" ]]; then
         _zsh_patina_ensure_running || return
         # give it a moment to create the socket
@@ -59,8 +59,15 @@ _zsh_patina() {
     fi
 
     if ! zsocket "$socket_path" 2>/dev/null; then
-        print -u2 "zsh-patina: failed to connect to socket at $socket_path"
-        return
+        # if the socket exists but we cannot connect to it, the daemon might
+        # have crashed - try to start it
+        _zsh_patina_ensure_running
+        sleep 0.1
+
+        if ! zsocket "$socket_path" 2>/dev/null; then
+            print -u2 "zsh-patina: failed to connect to socket at $socket_path"
+            return
+        fi
     fi
     local fd=$REPLY
 
