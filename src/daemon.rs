@@ -292,11 +292,8 @@ pub fn stop_daemon(data_dir: &Path) -> Result<()> {
 
         let _ = fs::remove_file(pid_file);
         let _ = fs::remove_file(sock_path(data_dir));
-
-        Ok(())
-    } else {
-        bail!("Daemon is not running")
     }
+    Ok(())
 }
 
 pub fn status_daemon(data_dir: &Path) -> Result<()> {

@@ -22,10 +22,10 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Start the highlighter daemon
+    /// Start the highlighter daemon if it's not already running
     Start,
 
-    /// Stop the highlighter daemon
+    /// Stop the highlighter daemon if it's not already stopped
     Stop,
 
     /// Check whether the highlighter daemon is running
