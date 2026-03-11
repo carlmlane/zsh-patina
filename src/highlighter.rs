@@ -11,7 +11,7 @@ use syntect::{
     util::LinesWithEndings,
 };
 
-use crate::theme::{Theme, ThemeSource};
+use crate::{HighlightingConfig, theme::Theme};
 
 fn to_hex(color: Color) -> String {
     format!("#{:0>2x}{:0>2x}{:0>2x}", color.r, color.g, color.b)
@@ -94,17 +94,17 @@ pub struct Highlighter {
 }
 
 impl Highlighter {
-    pub fn new(max_line_length: usize, timeout: Duration) -> Result<Self> {
+    pub fn new(config: &HighlightingConfig) -> Result<Self> {
         let syntax_set: SyntaxSet = syntect::dumps::from_uncompressed_data(include_bytes!(
             concat!(env!("OUT_DIR"), "/syntax_set.packdump")
         ))
         .expect("Unable to load shell syntax");
 
-        let theme = Theme::load(ThemeSource::Patina)?;
+        let theme = Theme::load(&config.theme)?;
 
         Ok(Self {
-            max_line_length,
-            timeout,
+            max_line_length: config.max_line_length,
+            timeout: config.timeout,
             syntax_set,
             theme: theme.try_into()?,
         })

@@ -17,6 +17,7 @@ use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use crate::{
     daemon::{start_daemon, status_daemon, stop_daemon},
     highlighter::{Highlighter, Token},
+    theme::ThemeSource,
 };
 
 mod daemon;
@@ -84,6 +85,11 @@ pub struct HighlightingConfig {
         deserialize_with = "deserialize_duration_ms"
     )]
     pub timeout: Duration,
+
+    /// Either the name of a built-in theme (`"simple"`, `"patina"`,
+    /// `"lavender"`) or a string in the form `"file:mytheme.toml"` pointing to
+    /// a custom theme toml file.
+    pub theme: ThemeSource,
 }
 
 fn serialize_duration_ms<S: Serializer>(duration: &Duration, s: S) -> Result<S::Ok, S::Error> {
@@ -100,6 +106,7 @@ impl Default for HighlightingConfig {
         Self {
             max_line_length: 20000,
             timeout: Duration::from_millis(500),
+            theme: ThemeSource::Patina,
         }
     }
 }
@@ -120,10 +127,7 @@ fn tokenize(config: &Config, input_file: &Option<String>) -> Result<()> {
     };
 
     // tokenize
-    let highlighter = Highlighter::new(
-        config.highlighting.max_line_length,
-        config.highlighting.timeout,
-    )?;
+    let highlighter = Highlighter::new(&config.highlighting)?;
     let tokens = highlighter.tokenize(&input)?;
 
     // join consecutive tokens

@@ -184,10 +184,7 @@ pub fn start_daemon(data_dir: &Path, config: &Config) -> Result<()> {
     }
 
     // initialize highlighter
-    let highlighter = Arc::new(Highlighter::new(
-        config.highlighting.max_line_length,
-        config.highlighting.timeout,
-    )?);
+    let highlighter = Arc::new(Highlighter::new(&config.highlighting)?);
 
     // Make sure the data directory exists
     fs::create_dir_all(data_dir).context("Unable to create data directory")?;

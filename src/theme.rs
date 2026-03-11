@@ -1,7 +1,7 @@
 use std::{collections::HashMap, str::FromStr};
 
 use anyhow::{Context, Result, bail};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use syntect::{
     highlighting::{
         Color, ScopeSelector, ScopeSelectors, StyleModifier, Theme as SyntectTheme, ThemeItem,
@@ -86,11 +86,41 @@ fn parse_color(s: &str) -> Result<Color> {
     })
 }
 
+#[derive(Clone, PartialEq, Eq)]
 pub enum ThemeSource {
     Simple,
     Patina,
     Lavender,
     File(String),
+}
+
+impl Serialize for ThemeSource {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            ThemeSource::Simple => serializer.serialize_str("simple"),
+            ThemeSource::Patina => serializer.serialize_str("patina"),
+            ThemeSource::Lavender => serializer.serialize_str("lavender"),
+            ThemeSource::File(_) => todo!(),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ThemeSource {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(match s.as_str() {
+            "simple" => ThemeSource::Simple,
+            "patina" => ThemeSource::Patina,
+            "lavender" => ThemeSource::Lavender,
+            _ => todo!(),
+        })
+    }
 }
 
 #[derive(Deserialize)]
@@ -101,7 +131,7 @@ pub struct Theme {
 
 impl Theme {
     /// Load a built-in theme or a custom one from a file
-    pub fn load(source: ThemeSource) -> Result<Self> {
+    pub fn load(source: &ThemeSource) -> Result<Self> {
         Ok(match source {
             ThemeSource::Simple => toml::from_slice(include_bytes!("../themes/simple.toml"))
                 .expect("Unable to load simple theme"),
