@@ -21,6 +21,7 @@ use crate::{
 
 mod daemon;
 mod highlighter;
+mod theme;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
