@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use figment::{
     Figment,
@@ -20,6 +20,7 @@ use crate::{
     theme::{Theme, ThemeSource},
 };
 
+mod color;
 mod daemon;
 mod highlighter;
 mod theme;
@@ -111,40 +112,6 @@ impl Default for HighlightingConfig {
     }
 }
 
-/// Parse a color in the format #RRGGBB, #RGB, or an ANSI name to a terminal
-/// color
-pub fn parse_term_color(s: &str) -> Result<Color> {
-    Ok(match s.to_ascii_lowercase().as_str() {
-        "black" => Color::Black,
-        "red" => Color::Red,
-        "green" => Color::Green,
-        "yellow" => Color::Yellow,
-        "blue" => Color::Blue,
-        "magenta" => Color::Magenta,
-        "cyan" => Color::Cyan,
-        "white" => Color::White,
-        _ => {
-            let s = s.strip_prefix('#').context("Color must start with '#'")?;
-            if s.len() == 6 {
-                let r = u8::from_str_radix(&s[0..2], 16)?;
-                let g = u8::from_str_radix(&s[2..4], 16)?;
-                let b = u8::from_str_radix(&s[4..6], 16)?;
-                Color::Rgb(r, g, b)
-            } else if s.len() == 3 {
-                let mut r = u8::from_str_radix(&s[0..1], 16)?;
-                let mut g = u8::from_str_radix(&s[1..2], 16)?;
-                let mut b = u8::from_str_radix(&s[2..3], 16)?;
-                r |= r << 4;
-                g |= g << 4;
-                b |= b << 4;
-                Color::Rgb(r, g, b)
-            } else {
-                bail!("Color must be in the format #RRGGBB or #RGB");
-            }
-        }
-    })
-}
-
 /// Tokenize an input file and print the identified tokens to stdout. If the
 /// input file is `None`, read from stdin.
 fn tokenize(config: &Config, input_file: &Option<String>) -> Result<()> {
@@ -210,9 +177,9 @@ fn tokenize(config: &Config, input_file: &Option<String>) -> Result<()> {
 
             let color_spec = if let Some(style) = theme.resolve(&t.scope) {
                 let mut color_spec = ColorSpec::new();
-                color_spec.set_fg(Some(parse_term_color(&style.foreground)?));
+                color_spec.set_fg(Some(style.foreground.into()));
                 if let Some(bg) = &style.background {
-                    color_spec.set_bg(Some(parse_term_color(bg)?));
+                    color_spec.set_bg(Some(bg.into()));
                 }
                 if style.bold {
                     color_spec.set_bold(true);

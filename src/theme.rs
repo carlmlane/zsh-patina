@@ -1,93 +1,19 @@
 use std::{collections::HashMap, fmt::Formatter, fs, str::FromStr};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{Error, MapAccess, Visitor, value::MapAccessDeserializer},
 };
 use syntect::{
     highlighting::{
-        Color, FontStyle, ScopeSelector, ScopeSelectors, StyleModifier, Theme as SyntectTheme,
-        ThemeItem, ThemeSettings,
+        Color as SyntectColor, FontStyle, ScopeSelector, ScopeSelectors, StyleModifier,
+        Theme as SyntectTheme, ThemeItem, ThemeSettings,
     },
     parsing::ScopeStack,
 };
 
-/// Convert a color in the format #RRGGBB or #RGB to a `Color`
-fn from_hex(s: &str) -> Result<Color> {
-    let s = s.strip_prefix('#').context("Color must start with '#'")?;
-    if s.len() == 6 {
-        let r = u8::from_str_radix(&s[0..2], 16)?;
-        let g = u8::from_str_radix(&s[2..4], 16)?;
-        let b = u8::from_str_radix(&s[4..6], 16)?;
-        Ok(Color { r, g, b, a: 255 })
-    } else if s.len() == 3 {
-        let mut r = u8::from_str_radix(&s[0..1], 16)?;
-        let mut g = u8::from_str_radix(&s[1..2], 16)?;
-        let mut b = u8::from_str_radix(&s[2..3], 16)?;
-        r |= r << 4;
-        g |= g << 4;
-        b |= b << 4;
-        Ok(Color { r, g, b, a: 255 })
-    } else {
-        bail!("Color must be in the format #RRGGBB or #RGB");
-    }
-}
-
-/// Parse a color in the format #RRGGBB, #RGB, or an ANSI name
-fn parse_color(s: &str) -> Result<Color> {
-    Ok(match s.to_ascii_lowercase().as_str() {
-        "black" => Color {
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-        },
-        "red" => Color {
-            r: 1,
-            g: 0,
-            b: 0,
-            a: 0,
-        },
-        "green" => Color {
-            r: 2,
-            g: 0,
-            b: 0,
-            a: 0,
-        },
-        "yellow" => Color {
-            r: 3,
-            g: 0,
-            b: 0,
-            a: 0,
-        },
-        "blue" => Color {
-            r: 4,
-            g: 0,
-            b: 0,
-            a: 0,
-        },
-        "magenta" => Color {
-            r: 5,
-            g: 0,
-            b: 0,
-            a: 0,
-        },
-        "cyan" => Color {
-            r: 6,
-            g: 0,
-            b: 0,
-            a: 0,
-        },
-        "white" => Color {
-            r: 7,
-            g: 0,
-            b: 0,
-            a: 0,
-        },
-        _ => from_hex(s)?,
-    })
-}
+use crate::color::Color;
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum ThemeSource {
@@ -127,10 +53,9 @@ impl<'de> Deserialize<'de> for ThemeSource {
     }
 }
 
-#[derive(Default)]
 pub struct Style {
-    pub foreground: String,
-    pub background: Option<String>,
+    pub foreground: Color,
+    pub background: Option<Color>,
     pub bold: bool,
     pub underline: bool,
 }
@@ -152,12 +77,8 @@ impl TryFrom<&Style> for StyleModifier {
             None
         };
         Ok(Self {
-            foreground: Some(parse_color(&style.foreground)?),
-            background: style
-                .background
-                .as_ref()
-                .map(|f| parse_color(f))
-                .transpose()?,
+            foreground: Some(style.foreground.into()),
+            background: style.background.as_ref().map(Into::into),
             font_style,
         })
     }
@@ -182,8 +103,10 @@ impl<'de> Deserialize<'de> for Style {
                 E: serde::de::Error,
             {
                 Ok(Style {
-                    foreground: value.to_string(),
-                    ..Default::default()
+                    foreground: Color::try_from(value).map_err(E::custom)?,
+                    background: None,
+                    bold: false,
+                    underline: false,
                 })
             }
 
@@ -204,8 +127,11 @@ impl<'de> Deserialize<'de> for Style {
                 let h = Helper::deserialize(MapAccessDeserializer::new(map))?;
 
                 Ok(Style {
-                    foreground: h.foreground,
-                    background: h.background,
+                    foreground: Color::try_from(h.foreground.as_str()).map_err(M::Error::custom)?,
+                    background: h
+                        .background
+                        .map(|bg| Color::try_from(bg.as_str()).map_err(M::Error::custom))
+                        .transpose()?,
                     bold: h.bold,
                     underline: h.underline,
                 })
@@ -262,14 +188,14 @@ impl TryFrom<Theme> for SyntectTheme {
     fn try_from(theme: Theme) -> Result<Self> {
         Ok(SyntectTheme {
             settings: ThemeSettings {
-                foreground: Some(Color {
+                foreground: Some(SyntectColor {
                     r: 7,
                     g: 0,
                     b: 0,
                     a: 0,
                 }),
                 // this will be converted to `None` in the highlighter module:
-                background: Some(Color {
+                background: Some(SyntectColor {
                     r: 0,
                     g: 0,
                     b: 0,
