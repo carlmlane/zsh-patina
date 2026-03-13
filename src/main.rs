@@ -2,6 +2,7 @@ use std::{
     env, fs,
     io::{self, Read, Write},
     path::PathBuf,
+    process,
     time::Duration,
 };
 
@@ -251,7 +252,7 @@ fn list_scopes() -> Result<()> {
     Ok(())
 }
 
-fn main() -> Result<()> {
+fn run() -> Result<()> {
     let home = PathBuf::from(env::var("HOME").context("$HOME not set")?);
     let config_dir = home.join(".config/zsh-patina");
     let data_dir = home.join(".local/share/zsh-patina");
@@ -288,4 +289,16 @@ fn main() -> Result<()> {
         Command::Tokenize { input_file } => tokenize(&config, &input_file),
         Command::ListScopes => list_scopes(),
     }
+}
+
+fn main() -> Result<()> {
+    if let Err(e) = run() {
+        let mut stderr = StandardStream::stderr(ColorChoice::Auto);
+        stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true))?;
+        write!(stderr, "zsh-patina: ")?;
+        stderr.reset()?;
+        writeln!(stderr, "{e:?}")?;
+        process::exit(1);
+    }
+    Ok(())
 }
