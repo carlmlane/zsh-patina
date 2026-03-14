@@ -12,14 +12,10 @@ keywords = ["shell", "zsh", "syntax", "highlighting", "syntax-highlighting"]
 categories = ["command-line-utilities"]
 rust-version = "1.88"
 
-[profile.release]
+[profile.release-lto]
+inherits = "release"
 lto = "fat"
 codegen-units = 1
-
-[profile.dev-release]
-inherits = "release"
-lto = false
-codegen-units = 16
 
 [dependencies]
 anyhow = "1.0.102"

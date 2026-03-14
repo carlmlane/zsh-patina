@@ -81,7 +81,7 @@ jobs:
 
       - name: Build
         shell: bash
-        run: $BUILD_CMD build --locked --release --target=${{ matrix.target }}
+        run: $BUILD_CMD build --locked --profile release-lto --target=${{ matrix.target }}
       
       - name: Set binary name and path
         id: bin
