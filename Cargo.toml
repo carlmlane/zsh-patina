@@ -12,6 +12,15 @@ keywords = ["shell", "zsh", "syntax", "highlighting", "syntax-highlighting"]
 categories = ["command-line-utilities"]
 rust-version = "1.88"
 
+[profile.release]
+lto = "fat"
+codegen-units = 1
+
+[profile.dev-release]
+inherits = "release"
+lto = false
+codegen-units = 16
+
 [dependencies]
 anyhow = "1.0.102"
 clap = { version = "4.5.60", features = ["derive", "wrap_help"] }
