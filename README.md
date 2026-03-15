@@ -55,6 +55,15 @@ In contrast to other Zsh syntax highlighters (e.g. [zsh-syntax-highlighting](htt
    exec zsh
    ```
 
+### Zinit (for Zinit users)
+
+Just add the following two lines to your `.zshrc` file:
+
+```shell
+zinit ice as"program" from"gh-r" pick"zsh-patina-*/zsh-patina" atload'eval "$(zsh-patina activate)"'
+zinit light michel-kraemer/zsh-patina
+```
+
 ### Pre-compiled binaries (for everyone)
 
 1. Visit https://github.com/michel-kraemer/zsh-patina/releases and download the appropriate archive for your system. There are binaries for Linux and macOS.
