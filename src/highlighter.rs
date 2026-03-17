@@ -20,6 +20,9 @@ use crate::{
     theme::{ScopeMapping, Style, Theme, ThemeSource},
 };
 
+const ARGUMENTS: &str = "meta.function-call.arguments.shell";
+const DYNAMIC_PATH: &str = "dynamic.path.shell";
+
 const CALLABLE: &str = "variable.function.shell";
 const DYNAMIC_CALLABLE_ALIAS: &str = "dynamic.callable.alias.shell";
 const DYNAMIC_CALLABLE_BUILTIN: &str = "dynamic.callable.builtin.shell";
@@ -29,6 +32,7 @@ const DYNAMIC_CALLABLE_MISSING: &str = "dynamic.callable.missing.shell";
 
 /// A span of text with a foreground color. The range is specified in terms of
 /// character indices, not byte indices.
+#[derive(PartialEq, Eq, Debug)]
 pub struct Span {
     /// The starting character index of the span (inclusive)
     pub start: usize,
@@ -40,7 +44,7 @@ pub struct Span {
     pub style: SpanStyle,
 }
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StaticStyle {
     /// The foreground color of the span
     pub foreground_color: String,
@@ -55,12 +59,12 @@ pub struct StaticStyle {
     pub underline: bool,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum DynamicStyle {
     Callable,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum SpanStyle {
     Static(StaticStyle),
     Dynamic(DynamicStyle),
@@ -117,6 +121,18 @@ fn resolve_static_style(scope: &str, theme: &Theme) -> Option<StaticStyle> {
     }
 }
 
+/// Check if the string refers to an existing file/directory. If the path is
+/// relative, it is resolved against the provided `pwd`.
+fn is_path(path: &str, pwd: &str) -> bool {
+    let p = Path::new(path);
+    let full_path = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        Path::new(pwd).join(p)
+    };
+    full_path.exists()
+}
+
 /// Check if the given path is an executable file. If the path is relative, it
 /// is resolved against the provided `pwd`. If the path is a directory, it is
 /// only considered executable if it ends with a slash.
@@ -171,6 +187,11 @@ impl Highlighter {
                 // overwritten by our dynamic style later anyhow.
                 theme.insert(CALLABLE.to_string(), Style::default());
             }
+        }
+
+        // Insert dummy style for arguments into the theme
+        if !theme.contains(ARGUMENTS) {
+            theme.insert(ARGUMENTS.to_string(), Style::default());
         }
 
         let scope_mapping = ScopeMapping::new(&theme);
@@ -274,27 +295,7 @@ impl Highlighter {
                 let len = r.1.chars().count();
 
                 if let Some(scope) = self.scope_mapping.decode(&r.0.foreground) {
-                    let style = if scope == CALLABLE {
-                        if let Some(pwd) = pwd
-                            && r.1.contains('/')
-                            && is_path_executable(r.1, pwd)
-                        {
-                            resolve_static_style(DYNAMIC_CALLABLE_COMMAND, &self.theme)
-                                .map(SpanStyle::Static)
-                        } else {
-                            Some(SpanStyle::Dynamic(DynamicStyle::Callable))
-                        }
-                    } else {
-                        resolve_static_style(scope, &self.theme).map(SpanStyle::Static)
-                    };
-
-                    if let Some(style) = style {
-                        result.push(Span {
-                            start: i,
-                            end: i + len,
-                            style,
-                        });
-                    }
+                    self.highlight_scope(r.1, i..i + len, scope, pwd, &mut result);
                 }
 
                 i += len;
@@ -302,6 +303,129 @@ impl Highlighter {
         }
 
         Ok(result)
+    }
+
+    fn highlight_scope(
+        &self,
+        token: &str,
+        range: Range<usize>,
+        scope: &str,
+        pwd: Option<&str>,
+        result: &mut Vec<Span>,
+    ) {
+        match scope {
+            ARGUMENTS => self.highlight_arguments(token, range, scope, pwd, result),
+            CALLABLE => self.highlight_callable(token, range, pwd, result),
+            _ => self.highlight_other(range, scope, result),
+        }
+    }
+
+    fn highlight_arguments(
+        &self,
+        token: &str,
+        range: Range<usize>,
+        scope: &str,
+        pwd: Option<&str>,
+        result: &mut Vec<Span>,
+    ) {
+        // highlighting argument is only necessary (and possible) if we have a
+        // current working directory and there is a dynamic style for it
+        let ppwd;
+        let dynamic_path_style;
+        if let Some(p) = pwd
+            && let Some(d) = resolve_static_style(DYNAMIC_PATH, &self.theme)
+        {
+            ppwd = p;
+            dynamic_path_style = d;
+        } else {
+            // fallback to static styling
+            if let Some(style) = resolve_static_style(scope, &self.theme) {
+                result.push(Span {
+                    start: range.start,
+                    end: range.end,
+                    style: SpanStyle::Static(style),
+                });
+            }
+            return;
+        };
+
+        // split the current token into sub-tokens of consecutive whitespaces or
+        // consecutive non-whitespaces
+        let mut start = 0;
+        let bytes = token.as_bytes();
+        while start < bytes.len() {
+            let is_whitespace = bytes[start].is_ascii_whitespace();
+            let end = bytes[start..]
+                .iter()
+                .position(|b| b.is_ascii_whitespace() != is_whitespace)
+                .map_or(bytes.len(), |p| start + p);
+
+            if !is_whitespace && is_path(&token[start..end], ppwd) {
+                // every non-whitespace sub-token that is a path should be
+                // highlighted with the dynamic path style
+                result.push(Span {
+                    start: range.start + start,
+                    end: range.start + end,
+                    style: SpanStyle::Static(dynamic_path_style.clone()),
+                });
+            } else {
+                // fallback to the normal style for this token
+                if let Some(style) = resolve_static_style(scope, &self.theme) {
+                    result.push(Span {
+                        start: range.start + start,
+                        end: range.start + end,
+                        style: SpanStyle::Static(style),
+                    });
+                }
+            }
+
+            start = end;
+        }
+    }
+
+    fn highlight_callable(
+        &self,
+        token: &str,
+        range: Range<usize>,
+        pwd: Option<&str>,
+        result: &mut Vec<Span>,
+    ) {
+        let style = if let Some(pwd) = pwd
+            && token.contains('/')
+            && is_path_executable(token, pwd)
+        {
+            // We have a current working directory and the token is a path to an
+            // executable. Highlight it as a command if this style is available
+            // or fall back to the static style for callables.
+            if let Some(style) = resolve_static_style(DYNAMIC_CALLABLE_COMMAND, &self.theme) {
+                Some(SpanStyle::Static(style))
+            } else {
+                resolve_static_style(CALLABLE, &self.theme).map(SpanStyle::Static)
+            }
+        } else {
+            // highlight the token as a dynamic callable and let the Zsh client
+            // script decide whether it is an alias, a builtin, a command, or a
+            // function
+            Some(SpanStyle::Dynamic(DynamicStyle::Callable))
+        };
+
+        if let Some(style) = style {
+            result.push(Span {
+                start: range.start,
+                end: range.end,
+                style,
+            });
+        }
+    }
+
+    fn highlight_other(&self, range: Range<usize>, scope: &str, result: &mut Vec<Span>) {
+        if let Some(style) = resolve_static_style(scope, &self.theme) {
+            result.push(Span {
+                start: range.start,
+                end: range.end,
+                style: SpanStyle::Static(style),
+            });
+        }
     }
 
     pub fn tokenize(&self, command: &str) -> Result<Vec<Token>> {
@@ -407,5 +531,65 @@ impl Highlighter {
         }
 
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+
+    fn test_config() -> HighlightingConfig {
+        HighlightingConfig::default()
+    }
+
+    /// Test if a simple `echo` command is highlighted correctly
+    #[test]
+    fn echo() -> Result<()> {
+        let highlighter = Highlighter::new(&test_config())?;
+        let highlighted = highlighter.highlight("echo", None)?;
+        assert_eq!(
+            highlighted,
+            vec![Span {
+                start: 0,
+                end: 4,
+                style: SpanStyle::Dynamic(DynamicStyle::Callable)
+            }]
+        );
+        Ok(())
+    }
+
+    /// Test if a command referring to a path is highlighted correctly
+    #[test]
+    fn argument_is_path() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let test_path = dir.path().join("test.txt");
+        fs::write(test_path, "test contents")?;
+
+        let highlighter = Highlighter::new(&test_config())?;
+        let highlighted = highlighter.highlight(
+            r#"cp test.txt dest.txt"#,
+            Some(dir.path().to_str().unwrap()),
+        )?;
+
+        let dynamic_path_style = resolve_static_style(DYNAMIC_PATH, &highlighter.theme).unwrap();
+
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 2,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable)
+                },
+                Span {
+                    start: 3,
+                    end: 11,
+                    style: SpanStyle::Static(dynamic_path_style),
+                }
+            ]
+        );
+
+        Ok(())
     }
 }

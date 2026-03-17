@@ -44,3 +44,4 @@
 # dynamic items
 "dynamic.callable" = "magenta"
 "dynamic.callable.missing" = "red"
+"dynamic.path.shell" = { underline = true }
