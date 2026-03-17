@@ -151,7 +151,11 @@ impl Highlighter {
 
         // Insert dummy style for arguments into the theme
         if !theme.contains(ARGUMENTS) {
-            theme.insert(ARGUMENTS.to_string(), Style::default());
+            if let Some(arguments_style) = theme.resolve(ARGUMENTS) {
+                theme.insert(ARGUMENTS.to_string(), arguments_style);
+            } else {
+                theme.insert(ARGUMENTS.to_string(), Style::default());
+            }
         }
 
         let scope_mapping = ScopeMapping::new(&theme);
