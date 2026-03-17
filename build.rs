@@ -48,13 +48,24 @@ fn collect_from_match(match_pattern: &MatchPattern, scopes: &mut HashSet<String>
 fn main() -> Result<()> {
     let out_dir = env::var_os("OUT_DIR").unwrap();
 
-    // get all possible scopes, sort them, and then dump them to a file
+    // get all possible scopes from the Sublime syntax
     let syntax_yaml =
         fs::read_to_string("assets/Packages/ShellScript/Bash.sublime-syntax").unwrap();
     let syntax_definition = SyntaxDefinition::load_from_str(&syntax_yaml, true, None).unwrap();
     let scopes = collect_scopes(&syntax_definition);
     let mut scopes = scopes.into_iter().collect::<Vec<_>>();
+
+    // add dynamic scopes
+    scopes.push("dynamic.callable.alias.shell".to_string());
+    scopes.push("dynamic.callable.builtin.shell".to_string());
+    scopes.push("dynamic.callable.command.shell".to_string());
+    scopes.push("dynamic.callable.function.shell".to_string());
+    scopes.push("dynamic.callable.missing.shell".to_string());
+
+    // sort scopes
     scopes.sort_unstable();
+
+    // dump scopes to a file
     let scopes_dest_path = PathBuf::from(&out_dir).join("scopes.rs");
     fs::write(
         scopes_dest_path,
