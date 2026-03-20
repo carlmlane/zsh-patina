@@ -5,6 +5,8 @@ mod highlighter;
 
 pub use highlighter::Highlighter;
 
+use crate::theme::Theme;
+
 const ARGUMENTS: &str = "meta.function-call.arguments.shell";
 const DYNAMIC_PATH_DIRECTORY: &str = "dynamic.path.directory.shell";
 const DYNAMIC_PATH_FILE: &str = "dynamic.path.file.shell";
@@ -17,16 +19,22 @@ const DYNAMIC_CALLABLE_FUNCTION: &str = "dynamic.callable.function.shell";
 const DYNAMIC_CALLABLE_MISSING: &str = "dynamic.callable.missing.shell";
 
 const CHARACTER_ESCAPE: &str = "constant.character.escape.shell";
+const CHARACTER_ESCAPE_QUOTED_ANSI: &str =
+    "constant.character.escape.shell string.quoted.single.ansi-c.shell";
 const TILDE: &str = "variable.language.tilde.shell";
+const TILDE_ARGUMENTS: &str = "meta.function-call.arguments.shell variable.language.tilde.shell";
+const TILDE_CALLABLE: &str = "variable.function.shell variable.language.tilde.shell";
 
 const STRING_QUOTED_DOUBLE: &str = "string.quoted.double.shell";
+const STRING_QUOTED_DOUBLE_BEGIN: &str = "punctuation.definition.string.begin.shell";
+const STRING_QUOTED_DOUBLE_END: &str = "punctuation.definition.string.end.shell";
 const STRING_QUOTED_DOUBLE_CALLABLE: &str = "variable.function.shell string.quoted.double.shell";
 const STRING_QUOTED_DOUBLE_ARGUMENTS: &str =
     "meta.function-call.arguments.shell string.quoted.double.shell";
 
 /// A span of text with a foreground color. The range is specified in terms of
 /// character indices, not byte indices.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Span {
     /// The starting character index of the span (inclusive)
     pub start: usize,
@@ -53,12 +61,12 @@ pub struct StaticStyle {
     pub underline: bool,
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DynamicStyle {
     Callable,
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum SpanStyle {
     Static(StaticStyle),
     Dynamic(DynamicStyle),
@@ -78,4 +86,24 @@ pub struct Token {
 
     /// The range of the token in the input command (byte indices)
     pub range: Range<usize>,
+}
+
+/// Lookup a scope in a theme and convert the retrieved style to a
+/// [`StaticStyle`] struct
+fn resolve_static_style(scope: &str, theme: &Theme) -> Option<StaticStyle> {
+    let style = theme.resolve(scope)?;
+
+    let fg = style.foreground.map(|c| c.to_ansi_color());
+    let bg = style.background.map(|c| c.to_ansi_color());
+
+    if fg.is_none() && bg.is_none() && !style.bold && !style.underline {
+        None
+    } else {
+        Some(StaticStyle {
+            foreground_color: fg,
+            background_color: bg,
+            bold: style.bold,
+            underline: style.underline,
+        })
+    }
 }

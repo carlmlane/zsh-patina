@@ -30,26 +30,6 @@ fn find_prefix_split(command: &str) -> Option<usize> {
     }
 }
 
-/// Lookup a scope in a theme and convert the retrieved style to a
-/// [`StaticStyle`] struct
-fn resolve_static_style(scope: &str, theme: &Theme) -> Option<StaticStyle> {
-    let style = theme.resolve(scope)?;
-
-    let fg = style.foreground.map(|c| c.to_ansi_color());
-    let bg = style.background.map(|c| c.to_ansi_color());
-
-    if fg.is_none() && bg.is_none() && !style.bold && !style.underline {
-        None
-    } else {
-        Some(StaticStyle {
-            foreground_color: fg,
-            background_color: bg,
-            bold: style.bold,
-            underline: style.underline,
-        })
-    }
-}
-
 fn insert_marker_style(theme: &mut Theme, scope: &str) {
     if !theme.contains(scope) {
         if let Some(style) = theme.resolve(scope) {
@@ -60,21 +40,28 @@ fn insert_marker_style(theme: &mut Theme, scope: &str) {
     }
 }
 
-fn insert_marker_style_with_fallback(theme: &mut Theme, scope: &str, fallback: &str) {
+fn insert_marker_style_with_fallback(theme: &mut Theme, scope: &str, fallbacks: &[&str]) {
     if !theme.contains(scope) {
-        if let Some(style) = theme.resolve(fallback) {
-            theme.insert(scope.to_string(), style);
-        } else {
-            theme.insert(scope.to_string(), Style::default());
+        for f in fallbacks {
+            if let Some(style) = theme.resolve(f) {
+                theme.insert(scope.to_string(), style);
+                return;
+            }
         }
+        theme.insert(scope.to_string(), Style::default());
     }
 }
 
-pub fn update_groups<'a>(
-    scope: &'a str,
+pub fn update_groups(
+    scope: &str,
     range: &Range<usize>,
-    groups: &mut Vec<DynamicTokenGroup<'a>>,
+    byte_range: &Range<usize>,
+    groups: &mut Vec<DynamicTokenGroup>,
 ) {
+    let Ok(dynamic_scope) = DynamicScope::try_from(scope) else {
+        return;
+    };
+
     // try to extend last group
     let dynamic_type = match scope {
         ARGUMENTS | STRING_QUOTED_DOUBLE_ARGUMENTS => {
@@ -83,11 +70,14 @@ pub fn update_groups<'a>(
                 && group.dynamic_type != DynamicType::Callable
             {
                 group.range.end = range.end;
+                group.byte_range.end = byte_range.end;
                 group.dynamic_type = DynamicType::Arguments;
-                group.tokens.push(DynamicToken::new(range, scope));
-                None
+                group
+                    .tokens
+                    .push(DynamicToken::new(range, byte_range, dynamic_scope));
+                return;
             } else {
-                Some(DynamicType::Arguments)
+                DynamicType::Arguments
             }
         }
 
@@ -97,34 +87,125 @@ pub fn update_groups<'a>(
                 && group.dynamic_type != DynamicType::Arguments
             {
                 group.range.end = range.end;
+                group.byte_range.end = byte_range.end;
                 group.dynamic_type = DynamicType::Callable;
-                group.tokens.push(DynamicToken::new(range, scope));
-                None
+                group
+                    .tokens
+                    .push(DynamicToken::new(range, byte_range, dynamic_scope));
+                return;
             } else {
-                Some(DynamicType::Callable)
+                DynamicType::Callable
             }
         }
 
-        CHARACTER_ESCAPE => {
+        CHARACTER_ESCAPE | STRING_QUOTED_DOUBLE_BEGIN | STRING_QUOTED_DOUBLE_END => {
             if let Some(group) = groups.last_mut()
                 && group.range.end == range.start
             {
                 group.range.end = range.end;
-                group.tokens.push(DynamicToken::new(range, scope));
-                None
+                group.byte_range.end = byte_range.end;
+                group
+                    .tokens
+                    .push(DynamicToken::new(range, byte_range, dynamic_scope));
+                return;
             } else {
-                Some(DynamicType::Unknown(CHARACTER_ESCAPE))
+                DynamicType::Unknown
             }
         }
 
-        TILDE => Some(DynamicType::Unknown(TILDE)),
+        TILDE_ARGUMENTS => DynamicType::Arguments,
 
-        _ => None,
+        TILDE_CALLABLE => DynamicType::Callable,
+
+        _ => return,
     };
 
-    // create new group if necessary
-    if let Some(dynamic_type) = dynamic_type {
-        groups.push(DynamicTokenGroup::new(range, dynamic_type, scope));
+    // create new group
+    groups.push(DynamicTokenGroup::new(
+        range,
+        byte_range,
+        dynamic_type,
+        dynamic_scope,
+    ));
+}
+
+fn mix_spans(base: Vec<Span>, mixins: Vec<Span>) -> Vec<Span> {
+    // collect all boundary positions where the active state changes
+    let mut positions = Vec::new();
+    for s in base.iter().chain(mixins.iter()) {
+        positions.push(s.start);
+        positions.push(s.end);
+    }
+    positions.sort_unstable();
+    positions.dedup();
+
+    let mut result = Vec::new();
+    let mut bi = 0;
+    let mut mi = 0;
+
+    for w in positions.windows(2) {
+        let (lo, hi) = (w[0], w[1]);
+
+        // advance past spans that end at or before lo
+        while bi < base.len() && base[bi].end <= lo {
+            bi += 1;
+        }
+        while mi < mixins.len() && mixins[mi].end <= lo {
+            mi += 1;
+        }
+
+        let active_base = base.get(bi).filter(|s| s.start <= lo && hi <= s.end);
+        let active_mixin = mixins.get(mi).filter(|s| s.start <= lo && hi <= s.end);
+
+        let style = match (active_base, active_mixin) {
+            (Some(b), Some(m)) => Some(mix_styles(&b.style, &m.style)),
+            (Some(b), None) => Some(b.style.clone()),
+            (None, Some(m)) => Some(m.style.clone()),
+            (None, None) => None,
+        };
+
+        if let Some(style) = style {
+            // merge with previous span if styles match
+            if let Some(last) = result.last_mut() {
+                let last: &mut Span = last;
+                if last.end == lo && last.style == style {
+                    last.end = hi;
+                    continue;
+                }
+            }
+            result.push(Span {
+                start: lo,
+                end: hi,
+                style,
+            });
+        }
+    }
+
+    result
+}
+
+fn mix_styles(base: &SpanStyle, mixin: &SpanStyle) -> SpanStyle {
+    match (base, mixin) {
+        (SpanStyle::Static(b), SpanStyle::Static(m)) => SpanStyle::Static(StaticStyle {
+            foreground_color: if m.foreground_color.is_some() {
+                m.foreground_color.clone()
+            } else {
+                b.foreground_color.clone()
+            },
+            background_color: if m.background_color.is_some() {
+                m.background_color.clone()
+            } else {
+                b.background_color.clone()
+            },
+            bold: if m.bold { true } else { b.bold },
+            underline: if m.underline { true } else { b.underline },
+        }),
+
+        (_, SpanStyle::Dynamic(m)) => SpanStyle::Dynamic(*m),
+
+        // this should actually be unreachable since base should always only
+        // contain static span styles
+        (SpanStyle::Dynamic(_), SpanStyle::Static(m)) => SpanStyle::Static(m.clone()),
     }
 }
 
@@ -154,16 +235,27 @@ impl Highlighter {
         // Do the same for other scopes
         insert_marker_style(&mut theme, ARGUMENTS);
         insert_marker_style(&mut theme, CHARACTER_ESCAPE);
-        insert_marker_style(&mut theme, TILDE);
+        insert_marker_style_with_fallback(&mut theme, TILDE_ARGUMENTS, &[TILDE]);
+        insert_marker_style_with_fallback(&mut theme, TILDE_CALLABLE, &[TILDE]);
         insert_marker_style_with_fallback(
             &mut theme,
             STRING_QUOTED_DOUBLE_CALLABLE,
-            STRING_QUOTED_DOUBLE,
+            &[STRING_QUOTED_DOUBLE],
         );
         insert_marker_style_with_fallback(
             &mut theme,
             STRING_QUOTED_DOUBLE_ARGUMENTS,
-            STRING_QUOTED_DOUBLE,
+            &[STRING_QUOTED_DOUBLE],
+        );
+        insert_marker_style_with_fallback(
+            &mut theme,
+            STRING_QUOTED_DOUBLE_BEGIN,
+            &[STRING_QUOTED_DOUBLE_BEGIN, STRING_QUOTED_DOUBLE],
+        );
+        insert_marker_style_with_fallback(
+            &mut theme,
+            STRING_QUOTED_DOUBLE_END,
+            &[STRING_QUOTED_DOUBLE_END, STRING_QUOTED_DOUBLE],
         );
 
         let scope_mapping = ScopeMapping::new(&theme);
@@ -275,6 +367,7 @@ impl Highlighter {
 
             let mut groups = Vec::new();
 
+            let mut bi = 0;
             for r in ranges {
                 if r.1.is_empty() {
                     continue;
@@ -286,18 +379,31 @@ impl Highlighter {
 
                 if let Some(scope) = self.scope_mapping.decode(&r.0.foreground) {
                     let range = i..i + len;
+                    let brange = bi..bi + r.1.len();
                     if predicate(&range) {
-                        update_groups(scope, &range, &mut groups);
+                        update_groups(scope, &range, &brange, &mut groups);
                         self.highlight_other(range, scope, &mut result);
                     }
                 }
 
                 i += len;
+                bi += r.1.len();
             }
 
-            // TODO process all groups and update result
-            // println!("GROUPS: {groups:?}");
-            // println!("RESULT {result:?}");
+            // highlight all groups
+            if let Some(pwd) = pwd {
+                let mut mixins = Vec::new();
+                for g in groups {
+                    if let Ok(group_spans) = g.highlight(line, pwd, &self.theme) {
+                        mixins.extend(group_spans);
+                    }
+                }
+
+                // mix into result
+                if !mixins.is_empty() {
+                    result = mix_spans(result, mixins);
+                }
+            }
         }
 
         Ok(result)
@@ -437,8 +543,10 @@ mod tests {
     /// Test if a simple `echo` command is highlighted correctly
     #[test]
     fn echo() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let pwd = Some(dir.path().to_str().unwrap());
         let highlighter = Highlighter::new(&test_config())?;
-        let highlighted = highlighter.highlight("echo", None, |_| true)?;
+        let highlighted = highlighter.highlight("echo", pwd, |_| true)?;
         assert_eq!(
             highlighted,
             vec![Span {
@@ -456,17 +564,25 @@ mod tests {
         let dir = tempfile::tempdir()?;
         let test_path = dir.path().join("test.txt");
         fs::write(test_path, "test contents")?;
+        let test_path1 = dir.path().join("test 1.txt");
+        fs::write(test_path1, "test contents")?;
+        let pwd = Some(dir.path().to_str().unwrap());
 
         let highlighter = Highlighter::new(&test_config())?;
-        let highlighted = highlighter.highlight(
-            "cp test.txt dest.txt",
-            Some(dir.path().to_str().unwrap()),
-            |_| true,
-        )?;
-
         let dynamic_file_style =
             resolve_static_style(DYNAMIC_PATH_FILE, &highlighter.theme).unwrap();
+        let string_style = resolve_static_style(STRING_QUOTED_DOUBLE, &highlighter.theme).unwrap();
+        let escape_style = resolve_static_style(CHARACTER_ESCAPE, &highlighter.theme).unwrap();
+        let dynamic_string_file_style = mix_styles(
+            &SpanStyle::Static(string_style.clone()),
+            &SpanStyle::Static(dynamic_file_style.clone()),
+        );
+        let dynamic_escape_file_style = mix_styles(
+            &SpanStyle::Static(escape_style.clone()),
+            &SpanStyle::Static(dynamic_file_style.clone()),
+        );
 
+        let highlighted = highlighter.highlight("cp test.txt dest.txt", pwd, |_| true)?;
         assert_eq!(
             highlighted,
             vec![
@@ -478,8 +594,141 @@ mod tests {
                 Span {
                     start: 3,
                     end: 11,
-                    style: SpanStyle::Static(dynamic_file_style),
+                    style: SpanStyle::Static(dynamic_file_style.clone()),
                 }
+            ]
+        );
+
+        let highlighted = highlighter.highlight(r#"cp "test.txt" dest.txt"#, pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 2,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable)
+                },
+                Span {
+                    start: 3,
+                    end: 13,
+                    style: dynamic_string_file_style.clone(),
+                }
+            ]
+        );
+
+        let highlighted =
+            highlighter.highlight(r#"cp   "test.txt"   "dest.txt""#, pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 2,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable)
+                },
+                Span {
+                    start: 5,
+                    end: 15,
+                    style: dynamic_string_file_style.clone(),
+                },
+                Span {
+                    start: 18,
+                    end: 28,
+                    style: SpanStyle::Static(string_style.clone()),
+                }
+            ]
+        );
+
+        let highlighted = highlighter.highlight(r#"cp " test.txt" "dest.txt""#, pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 2,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable)
+                },
+                Span {
+                    start: 3,
+                    end: 14,
+                    style: SpanStyle::Static(string_style.clone()),
+                },
+                Span {
+                    start: 15,
+                    end: 25,
+                    style: SpanStyle::Static(string_style.clone()),
+                }
+            ]
+        );
+
+        let highlighted = highlighter.highlight(r#"cp te"st.tx"t dest.txt"#, pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 2,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable)
+                },
+                Span {
+                    start: 3,
+                    end: 5,
+                    style: SpanStyle::Static(dynamic_file_style.clone()),
+                },
+                Span {
+                    start: 5,
+                    end: 12,
+                    style: dynamic_string_file_style.clone(),
+                },
+                Span {
+                    start: 12,
+                    end: 13,
+                    style: SpanStyle::Static(dynamic_file_style.clone()),
+                }
+            ]
+        );
+
+        let highlighted = highlighter.highlight(r#"cp "test 1.txt" dest.txt"#, pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 2,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable)
+                },
+                Span {
+                    start: 3,
+                    end: 15,
+                    style: dynamic_string_file_style.clone(),
+                },
+            ]
+        );
+
+        let highlighted = highlighter.highlight(r#"cp test\ 1.txt dest.txt"#, pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 2,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable)
+                },
+                Span {
+                    start: 3,
+                    end: 7,
+                    style: SpanStyle::Static(dynamic_file_style.clone()),
+                },
+                Span {
+                    start: 7,
+                    end: 9,
+                    style: dynamic_escape_file_style.clone(),
+                },
+                Span {
+                    start: 9,
+                    end: 14,
+                    style: SpanStyle::Static(dynamic_file_style.clone()),
+                },
             ]
         );
 
@@ -494,13 +743,10 @@ mod tests {
         fs::write(test_path, "test contents")?;
         let dest_path = dir.path().join("dest");
         fs::create_dir(dest_path)?;
+        let pwd = Some(dir.path().to_str().unwrap());
 
         let highlighter = Highlighter::new(&test_config())?;
-        let highlighted = highlighter.highlight(
-            "cp test.txt dest",
-            Some(dir.path().to_str().unwrap()),
-            |_| true,
-        )?;
+        let highlighted = highlighter.highlight("cp test.txt dest", pwd, |_| true)?;
 
         let dynamic_file_style =
             resolve_static_style(DYNAMIC_PATH_FILE, &highlighter.theme).unwrap();
@@ -535,49 +781,43 @@ mod tests {
     #[test]
     fn command_with_tilde() -> Result<()> {
         let dir = tempfile::tempdir()?;
+        let pwd = Some(dir.path().to_str().unwrap());
 
         let highlighter = Highlighter::new(&test_config())?;
-        let tilde_style = resolve_static_style(TILDE, &highlighter.theme).unwrap();
         let dynamic_command_style =
             resolve_static_style(DYNAMIC_CALLABLE_COMMAND, &highlighter.theme).unwrap();
 
-        let highlighted =
-            highlighter.highlight("~", Some(dir.path().to_str().unwrap()), |_| true)?;
+        let highlighted = highlighter.highlight("~", pwd, |_| true)?;
         assert_eq!(
             highlighted,
             vec![Span {
                 start: 0,
                 end: 1,
-                style: SpanStyle::Static(tilde_style.clone())
+                style: SpanStyle::Dynamic(DynamicStyle::Callable)
             }]
         );
 
-        let highlighted =
-            highlighter.highlight("~/", Some(dir.path().to_str().unwrap()), |_| true)?;
+        let highlighted = highlighter.highlight("~/", pwd, |_| true)?;
         assert_eq!(
             highlighted,
             vec![Span {
                 start: 0,
                 end: 2,
-                style: SpanStyle::Static(dynamic_command_style)
+                style: SpanStyle::Static(dynamic_command_style.clone())
             }]
         );
 
-        let highlighted =
-            highlighter.highlight("~ echo", Some(dir.path().to_str().unwrap()), |_| true)?;
+        let highlighted = highlighter.highlight("~ echo", pwd, |_| true)?;
         assert_eq!(
             highlighted,
             vec![Span {
                 start: 0,
                 end: 1,
-                style: SpanStyle::Static(tilde_style)
+                style: SpanStyle::Dynamic(DynamicStyle::Callable)
             }]
         );
 
-        let highlighted =
-            highlighter.highlight("~doesnotexist", Some(dir.path().to_str().unwrap()), |_| {
-                true
-            })?;
+        let highlighted = highlighter.highlight("~doesnotexist", pwd, |_| true)?;
         assert_eq!(
             highlighted,
             vec![Span {
@@ -594,14 +834,14 @@ mod tests {
     #[test]
     fn path_with_tilde() -> Result<()> {
         let dir = tempfile::tempdir()?;
+        let pwd = Some(dir.path().to_str().unwrap());
 
         let highlighter = Highlighter::new(&test_config())?;
         let tilde_style = resolve_static_style(TILDE, &highlighter.theme).unwrap();
         let dynamic_directory_style =
             resolve_static_style(DYNAMIC_PATH_DIRECTORY, &highlighter.theme).unwrap();
 
-        let highlighted =
-            highlighter.highlight("ls ~", Some(dir.path().to_str().unwrap()), |_| true)?;
+        let highlighted = highlighter.highlight("ls ~", pwd, |_| true)?;
         assert_eq!(
             highlighted,
             vec![
@@ -618,8 +858,7 @@ mod tests {
             ]
         );
 
-        let highlighted =
-            highlighter.highlight("ls ~/", Some(dir.path().to_str().unwrap()), |_| true)?;
+        let highlighted = highlighter.highlight("ls ~/", pwd, |_| true)?;
         assert_eq!(
             highlighted,
             vec![
@@ -636,11 +875,7 @@ mod tests {
             ]
         );
 
-        let highlighted = highlighter.highlight(
-            "ls ~/this/path/does/not/exist",
-            Some(dir.path().to_str().unwrap()),
-            |_| true,
-        )?;
+        let highlighted = highlighter.highlight("ls ~/this/path/does/not/exist", pwd, |_| true)?;
         assert_eq!(
             highlighted,
             vec![Span {
@@ -656,11 +891,11 @@ mod tests {
     #[test]
     fn quoted_callable() -> Result<()> {
         let dir = tempfile::tempdir()?;
+        let pwd = Some(dir.path().to_str().unwrap());
 
         let highlighter = Highlighter::new(&test_config())?;
 
-        let highlighted =
-            highlighter.highlight("\"ls\"", Some(dir.path().to_str().unwrap()), |_| true)?;
+        let highlighted = highlighter.highlight("\"ls\"", pwd, |_| true)?;
         assert_eq!(
             highlighted,
             vec![Span {
@@ -670,8 +905,7 @@ mod tests {
             }]
         );
 
-        let highlighted =
-            highlighter.highlight("l\"s\"", Some(dir.path().to_str().unwrap()), |_| true)?;
+        let highlighted = highlighter.highlight("l\"s\"", pwd, |_| true)?;
         assert_eq!(
             highlighted,
             vec![Span {
@@ -688,11 +922,7 @@ mod tests {
         let dynamic_callable_style =
             resolve_static_style(DYNAMIC_CALLABLE_COMMAND, &highlighter.theme).unwrap();
 
-        let highlighted = highlighter.highlight(
-            "\"./script.sh\"",
-            Some(dir.path().to_str().unwrap()),
-            |_| true,
-        )?;
+        let highlighted = highlighter.highlight("\"./script.sh\"", pwd, |_| true)?;
         assert_eq!(
             highlighted,
             vec![Span {
@@ -705,8 +935,7 @@ mod tests {
         let directory_path = dir.path().join("foo/bar");
         fs::create_dir_all(&directory_path)?;
 
-        let highlighted =
-            highlighter.highlight("foo/\"bar\"/", Some(dir.path().to_str().unwrap()), |_| true)?;
+        let highlighted = highlighter.highlight("foo/\"bar\"/", pwd, |_| true)?;
         assert_eq!(
             highlighted,
             vec![Span {
@@ -717,5 +946,196 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    fn static_span(
+        start: usize,
+        end: usize,
+        fg: Option<&str>,
+        bg: Option<&str>,
+        bold: bool,
+        underline: bool,
+    ) -> Span {
+        Span {
+            start,
+            end,
+            style: SpanStyle::Static(StaticStyle {
+                foreground_color: fg.map(String::from),
+                background_color: bg.map(String::from),
+                bold,
+                underline,
+            }),
+        }
+    }
+
+    /// Both base and mixins are empty
+    #[test]
+    fn mix_spans_empty() {
+        assert_eq!(mix_spans(vec![], vec![]), vec![]);
+    }
+
+    /// No mixins: base spans are returned as-is
+    #[test]
+    fn mix_spans_no_mixins() {
+        let base = vec![static_span(0, 5, Some("red"), None, false, false)];
+        assert_eq!(mix_spans(base.clone(), vec![]), base);
+    }
+
+    /// A mixin that doesn't overlap any base span is still kept
+    #[test]
+    fn mix_spans_non_overlapping_mixin_kept() {
+        let base = vec![static_span(0, 3, Some("red"), None, false, false)];
+        let mixins = vec![static_span(5, 8, Some("blue"), None, false, false)];
+        assert_eq!(
+            mix_spans(base, mixins),
+            vec![
+                static_span(0, 3, Some("red"), None, false, false),
+                static_span(5, 8, Some("blue"), None, false, false),
+            ]
+        );
+    }
+
+    /// A mixin that fully covers a base span: the entire base is overridden
+    #[test]
+    fn mix_spans_mixin_fully_covers_base() {
+        let base = vec![static_span(2, 6, Some("red"), None, false, false)];
+        let mixins = vec![static_span(2, 6, Some("blue"), None, true, false)];
+        assert_eq!(
+            mix_spans(base, mixins),
+            vec![static_span(2, 6, Some("blue"), None, true, false)]
+        );
+    }
+
+    /// A mixin that partially overlaps the start of a base span
+    #[test]
+    fn mix_spans_mixin_overlaps_start() {
+        let base = vec![static_span(2, 8, Some("red"), None, false, false)];
+        let mixins = vec![static_span(0, 4, Some("blue"), None, false, false)];
+        assert_eq!(
+            mix_spans(base, mixins),
+            vec![
+                // mixin before base + intersection merged (same style)
+                static_span(0, 4, Some("blue"), None, false, false),
+                // remainder of base (4..8)
+                static_span(4, 8, Some("red"), None, false, false),
+            ]
+        );
+    }
+
+    /// A mixin that partially overlaps the end of a base span
+    #[test]
+    fn mix_spans_mixin_overlaps_end() {
+        let base = vec![static_span(0, 5, Some("red"), None, false, false)];
+        let mixins = vec![static_span(3, 8, Some("blue"), None, false, false)];
+        assert_eq!(
+            mix_spans(base, mixins),
+            vec![
+                // base before overlap (0..3)
+                static_span(0, 3, Some("red"), None, false, false),
+                // intersection + mixin after base merged (same style)
+                static_span(3, 8, Some("blue"), None, false, false),
+            ]
+        );
+    }
+
+    /// A mixin fully contained within a base span splits it into three parts
+    #[test]
+    fn mix_spans_mixin_inside_base() {
+        let base = vec![static_span(0, 10, Some("red"), Some("white"), false, false)];
+        let mixins = vec![static_span(3, 7, None, Some("black"), true, false)];
+        assert_eq!(
+            mix_spans(base, mixins),
+            vec![
+                // base before overlap
+                static_span(0, 3, Some("red"), Some("white"), false, false),
+                // intersection: mixin bg overrides, mixin bold overrides, base fg kept (mixin fg is None)
+                static_span(3, 7, Some("red"), Some("black"), true, false),
+                // base after overlap
+                static_span(7, 10, Some("red"), Some("white"), false, false),
+            ]
+        );
+    }
+
+    /// Multiple mixins overlapping a single base span
+    #[test]
+    fn mix_spans_multiple_mixins_one_base() {
+        let base = vec![static_span(0, 10, Some("red"), None, false, false)];
+        let mixins = vec![
+            static_span(1, 3, Some("green"), None, false, false),
+            static_span(5, 7, Some("blue"), None, false, false),
+        ];
+        assert_eq!(
+            mix_spans(base, mixins),
+            vec![
+                static_span(0, 1, Some("red"), None, false, false),
+                static_span(1, 3, Some("green"), None, false, false),
+                static_span(3, 5, Some("red"), None, false, false),
+                static_span(5, 7, Some("blue"), None, false, false),
+                static_span(7, 10, Some("red"), None, false, false),
+            ]
+        );
+    }
+
+    /// Mixin with None fg preserves base fg; mixin with Some bg overrides
+    #[test]
+    fn mix_spans_style_merge_none_preserved() {
+        let base = vec![static_span(0, 4, Some("red"), Some("white"), true, false)];
+        let mixins = vec![static_span(0, 4, None, Some("black"), false, true)];
+        assert_eq!(
+            mix_spans(base, mixins),
+            vec![
+                // fg: base (mixin is None), bg: mixin, bold: base (mixin is false), underline: mixin (true)
+                static_span(0, 4, Some("red"), Some("black"), true, true),
+            ]
+        );
+    }
+
+    /// Non-overlapping mixin between two base spans is kept in order
+    #[test]
+    fn mix_spans_mixin_between_bases() {
+        let base = vec![
+            static_span(0, 3, Some("red"), None, false, false),
+            static_span(7, 10, Some("green"), None, false, false),
+        ];
+        let mixins = vec![static_span(4, 6, Some("blue"), None, false, false)];
+        assert_eq!(
+            mix_spans(base, mixins),
+            vec![
+                static_span(0, 3, Some("red"), None, false, false),
+                static_span(4, 6, Some("blue"), None, false, false),
+                static_span(7, 10, Some("green"), None, false, false),
+            ]
+        );
+    }
+
+    /// A single mixin spanning across two base spans
+    #[test]
+    fn mix_spans_mixin_spans_two_bases() {
+        let base = vec![
+            static_span(0, 4, Some("red"), None, false, false),
+            static_span(6, 10, Some("green"), None, false, false),
+        ];
+        let mixins = vec![static_span(2, 8, Some("blue"), None, false, false)];
+        assert_eq!(
+            mix_spans(base, mixins),
+            vec![
+                // base[0] before overlap
+                static_span(0, 2, Some("red"), None, false, false),
+                // base[0] ∩ mixin + gap + base[1] ∩ mixin merged (same style)
+                static_span(2, 8, Some("blue"), None, false, false),
+                // base[1] after overlap
+                static_span(8, 10, Some("green"), None, false, false),
+            ]
+        );
+    }
+
+    /// No base spans: all mixins are kept
+    #[test]
+    fn mix_spans_no_base() {
+        let mixins = vec![
+            static_span(0, 3, Some("blue"), None, false, false),
+            static_span(5, 8, Some("green"), None, false, false),
+        ];
+        assert_eq!(mix_spans(vec![], mixins.clone()), mixins,);
     }
 }
