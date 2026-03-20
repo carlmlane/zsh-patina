@@ -64,7 +64,11 @@ pub fn update_groups(
 
     // try to extend last group
     let dynamic_type = match scope {
-        ARGUMENTS | STRING_QUOTED_DOUBLE_ARGUMENTS | TILDE_ARGUMENTS => {
+        ARGUMENTS
+        | STRING_QUOTED_SINGLE_ARGUMENTS
+        | STRING_QUOTED_SINGLE_ANSI_ARGUMENTS
+        | STRING_QUOTED_DOUBLE_ARGUMENTS
+        | TILDE_ARGUMENTS => {
             if let Some(group) = groups.last_mut()
                 && group.range.end == range.start
                 && group.dynamic_type != DynamicType::Callable
@@ -81,7 +85,11 @@ pub fn update_groups(
             }
         }
 
-        CALLABLE | STRING_QUOTED_DOUBLE_CALLABLE | TILDE_CALLABLE => {
+        CALLABLE
+        | STRING_QUOTED_SINGLE_CALLABLE
+        | STRING_QUOTED_SINGLE_ANSI_CALLABLE
+        | STRING_QUOTED_DOUBLE_CALLABLE
+        | TILDE_CALLABLE => {
             if let Some(group) = groups.last_mut()
                 && group.range.end == range.start
                 && group.dynamic_type != DynamicType::Arguments
@@ -98,7 +106,7 @@ pub fn update_groups(
             }
         }
 
-        CHARACTER_ESCAPE | STRING_QUOTED_DOUBLE_BEGIN | STRING_QUOTED_DOUBLE_END => {
+        CHARACTER_ESCAPE | STRING_QUOTED_BEGIN | STRING_QUOTED_END => {
             if let Some(group) = groups.last_mut()
                 && group.range.end == range.start
             {
@@ -235,6 +243,26 @@ impl Highlighter {
         insert_marker_style_with_fallback(&mut theme, TILDE_CALLABLE, &[TILDE]);
         insert_marker_style_with_fallback(
             &mut theme,
+            STRING_QUOTED_SINGLE_CALLABLE,
+            &[STRING_QUOTED_SINGLE],
+        );
+        insert_marker_style_with_fallback(
+            &mut theme,
+            STRING_QUOTED_SINGLE_ARGUMENTS,
+            &[STRING_QUOTED_SINGLE],
+        );
+        insert_marker_style_with_fallback(
+            &mut theme,
+            STRING_QUOTED_SINGLE_ANSI_CALLABLE,
+            &[STRING_QUOTED_SINGLE_ANSI],
+        );
+        insert_marker_style_with_fallback(
+            &mut theme,
+            STRING_QUOTED_SINGLE_ANSI_ARGUMENTS,
+            &[STRING_QUOTED_SINGLE_ANSI],
+        );
+        insert_marker_style_with_fallback(
+            &mut theme,
             STRING_QUOTED_DOUBLE_CALLABLE,
             &[STRING_QUOTED_DOUBLE],
         );
@@ -245,13 +273,13 @@ impl Highlighter {
         );
         insert_marker_style_with_fallback(
             &mut theme,
-            STRING_QUOTED_DOUBLE_BEGIN,
-            &[STRING_QUOTED_DOUBLE_BEGIN, STRING_QUOTED_DOUBLE],
+            STRING_QUOTED_BEGIN,
+            &[STRING_QUOTED_BEGIN, STRING_QUOTED_DOUBLE],
         );
         insert_marker_style_with_fallback(
             &mut theme,
-            STRING_QUOTED_DOUBLE_END,
-            &[STRING_QUOTED_DOUBLE_END, STRING_QUOTED_DOUBLE],
+            STRING_QUOTED_END,
+            &[STRING_QUOTED_END, STRING_QUOTED_DOUBLE],
         );
 
         let scope_mapping = ScopeMapping::new(&theme);
@@ -728,6 +756,40 @@ mod tests {
             ]
         );
 
+        let highlighted = highlighter.highlight(r#"cp 'test.txt' dest.txt"#, pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 2,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable)
+                },
+                Span {
+                    start: 3,
+                    end: 13,
+                    style: dynamic_string_file_style.clone(),
+                }
+            ]
+        );
+
+        let highlighted = highlighter.highlight(r#"cp $'test.txt' dest.txt"#, pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 2,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable)
+                },
+                Span {
+                    start: 3,
+                    end: 14,
+                    style: dynamic_string_file_style.clone(),
+                }
+            ]
+        );
+
         Ok(())
     }
 
@@ -918,6 +980,40 @@ mod tests {
             ]
         );
 
+        let highlighted = highlighter.highlight("ls '~/'", pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 2,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable)
+                },
+                Span {
+                    start: 3,
+                    end: 7,
+                    style: SpanStyle::Static(string_style.clone())
+                }
+            ]
+        );
+
+        let highlighted = highlighter.highlight("ls $'~/'", pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 2,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable)
+                },
+                Span {
+                    start: 3,
+                    end: 8,
+                    style: SpanStyle::Static(string_style.clone())
+                }
+            ]
+        );
+
         let highlighted = highlighter.highlight("ls ~/this/path/does/not/exist", pwd, |_| true)?;
         assert_eq!(
             highlighted,
@@ -956,7 +1052,7 @@ mod tests {
     }
 
     #[test]
-    fn quoted_callable() -> Result<()> {
+    fn double_quoted_callable() -> Result<()> {
         let dir = tempfile::tempdir()?;
         let pwd = Some(dir.path().to_str().unwrap());
 

@@ -14,8 +14,12 @@ pub enum DynamicScope {
     Arguments,
     Callable,
     CharacterEscape,
-    StringQuotedDoubleBegin,
-    StringQuotedDoubleEnd,
+    StringQuotedBegin,
+    StringQuotedEnd,
+    StringQuotedSingleArguments,
+    StringQuotedSingleCallable,
+    StringQuotedSingleAnsiArguments,
+    StringQuotedSingleAnsiCallable,
     StringQuotedDoubleArguments,
     StringQuotedDoubleCallable,
     TildeArguments,
@@ -28,8 +32,12 @@ impl DynamicScope {
             DynamicScope::Arguments => ARGUMENTS,
             DynamicScope::Callable => CALLABLE,
             DynamicScope::CharacterEscape => CHARACTER_ESCAPE,
-            DynamicScope::StringQuotedDoubleBegin => STRING_QUOTED_DOUBLE_BEGIN,
-            DynamicScope::StringQuotedDoubleEnd => STRING_QUOTED_DOUBLE_END,
+            DynamicScope::StringQuotedBegin => STRING_QUOTED_BEGIN,
+            DynamicScope::StringQuotedEnd => STRING_QUOTED_END,
+            DynamicScope::StringQuotedSingleArguments => STRING_QUOTED_SINGLE_ARGUMENTS,
+            DynamicScope::StringQuotedSingleCallable => STRING_QUOTED_SINGLE_CALLABLE,
+            DynamicScope::StringQuotedSingleAnsiArguments => STRING_QUOTED_SINGLE_ANSI_ARGUMENTS,
+            DynamicScope::StringQuotedSingleAnsiCallable => STRING_QUOTED_SINGLE_ANSI_CALLABLE,
             DynamicScope::StringQuotedDoubleArguments => STRING_QUOTED_DOUBLE_ARGUMENTS,
             DynamicScope::StringQuotedDoubleCallable => STRING_QUOTED_DOUBLE_CALLABLE,
             DynamicScope::TildeArguments => TILDE_ARGUMENTS,
@@ -46,8 +54,14 @@ impl TryFrom<&str> for DynamicScope {
             ARGUMENTS => Ok(DynamicScope::Arguments),
             CALLABLE => Ok(DynamicScope::Callable),
             CHARACTER_ESCAPE => Ok(DynamicScope::CharacterEscape),
-            STRING_QUOTED_DOUBLE_BEGIN => Ok(DynamicScope::StringQuotedDoubleBegin),
-            STRING_QUOTED_DOUBLE_END => Ok(DynamicScope::StringQuotedDoubleEnd),
+            STRING_QUOTED_BEGIN => Ok(DynamicScope::StringQuotedBegin),
+            STRING_QUOTED_END => Ok(DynamicScope::StringQuotedEnd),
+            STRING_QUOTED_SINGLE_ARGUMENTS => Ok(DynamicScope::StringQuotedSingleArguments),
+            STRING_QUOTED_SINGLE_CALLABLE => Ok(DynamicScope::StringQuotedSingleCallable),
+            STRING_QUOTED_SINGLE_ANSI_ARGUMENTS => {
+                Ok(DynamicScope::StringQuotedSingleAnsiArguments)
+            }
+            STRING_QUOTED_SINGLE_ANSI_CALLABLE => Ok(DynamicScope::StringQuotedSingleAnsiCallable),
             STRING_QUOTED_DOUBLE_ARGUMENTS => Ok(DynamicScope::StringQuotedDoubleArguments),
             STRING_QUOTED_DOUBLE_CALLABLE => Ok(DynamicScope::StringQuotedDoubleCallable),
             TILDE_ARGUMENTS => Ok(DynamicScope::TildeArguments),
@@ -206,6 +220,10 @@ impl DynamicTokenGroup {
                 }
 
                 DynamicScope::Callable
+                | DynamicScope::StringQuotedSingleArguments
+                | DynamicScope::StringQuotedSingleCallable
+                | DynamicScope::StringQuotedSingleAnsiArguments
+                | DynamicScope::StringQuotedSingleAnsiCallable
                 | DynamicScope::StringQuotedDoubleArguments
                 | DynamicScope::StringQuotedDoubleCallable => {
                     let c = &line[t.byte_range.clone()];
@@ -221,11 +239,11 @@ impl DynamicTokenGroup {
                     end += len;
                 }
 
-                DynamicScope::StringQuotedDoubleBegin => {
-                    end += 1;
+                DynamicScope::StringQuotedBegin => {
+                    end += line[t.byte_range.clone()].chars().count();
                 }
 
-                DynamicScope::StringQuotedDoubleEnd => {
+                DynamicScope::StringQuotedEnd => {
                     end += 1;
                 }
 

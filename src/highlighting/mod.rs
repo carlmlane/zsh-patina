@@ -25,9 +25,18 @@ const TILDE: &str = "variable.language.tilde.shell";
 const TILDE_ARGUMENTS: &str = "meta.function-call.arguments.shell variable.language.tilde.shell";
 const TILDE_CALLABLE: &str = "variable.function.shell variable.language.tilde.shell";
 
+const STRING_QUOTED_SINGLE: &str = "string.quoted.single.shell";
+const STRING_QUOTED_SINGLE_ANSI: &str = "string.quoted.single.ansi-c.shell";
 const STRING_QUOTED_DOUBLE: &str = "string.quoted.double.shell";
-const STRING_QUOTED_DOUBLE_BEGIN: &str = "punctuation.definition.string.begin.shell";
-const STRING_QUOTED_DOUBLE_END: &str = "punctuation.definition.string.end.shell";
+const STRING_QUOTED_BEGIN: &str = "punctuation.definition.string.begin.shell";
+const STRING_QUOTED_END: &str = "punctuation.definition.string.end.shell";
+const STRING_QUOTED_SINGLE_CALLABLE: &str = "variable.function.shell string.quoted.single.shell";
+const STRING_QUOTED_SINGLE_ARGUMENTS: &str =
+    "meta.function-call.arguments.shell string.quoted.single.shell";
+const STRING_QUOTED_SINGLE_ANSI_CALLABLE: &str =
+    "variable.function.shell string.quoted.single.ansi-c.shell";
+const STRING_QUOTED_SINGLE_ANSI_ARGUMENTS: &str =
+    "meta.function-call.arguments.shell string.quoted.single.ansi-c.shell";
 const STRING_QUOTED_DOUBLE_CALLABLE: &str = "variable.function.shell string.quoted.double.shell";
 const STRING_QUOTED_DOUBLE_ARGUMENTS: &str =
     "meta.function-call.arguments.shell string.quoted.double.shell";
