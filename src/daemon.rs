@@ -110,16 +110,16 @@ fn decode_string(s: &str) -> String {
     out
 }
 
-fn encode_string(input: &str) -> String {
+fn encode_string(input: String) -> String {
     // Fast path: no encoding needed
     if !input
         .bytes()
         .any(|b| matches!(b, b'%' | b' ' | b'\t' | b'\n' | b'\r' | b'\x0C'))
     {
-        return input.to_owned();
+        return input;
     }
 
-    let mut out = String::with_capacity(input.len() + input.len() / 4);
+    let mut out = String::with_capacity(input.len());
     for b in input.bytes() {
         match b {
             b'%' => out.push_str("%25"),
@@ -302,8 +302,8 @@ fn handle_connection(mut stream: UnixStream, highlighter: Arc<Highlighter>) -> R
                             "-DY{} {} {} {}\n",
                             s.start,
                             s.end,
-                            encode_string(&parsed_callable),
-                            encode_string(&all_fss)
+                            encode_string(parsed_callable),
+                            encode_string(all_fss)
                         ))
                     }
                 }
