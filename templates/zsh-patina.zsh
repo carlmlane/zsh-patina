@@ -96,7 +96,7 @@ _zsh_patina() {
     if ! zsocket "$socket_path" 2>/dev/null; then
         # this is a real error that should not happen - so better print an error
         # message than being silent
-        print -u2 "zsh-patina: failed to connect to socket at $socket_path"
+        zle -M "zsh-patina: failed to connect to socket at $socket_path. Please restart your shell and/or the zsh-patina daemon with 'zsh-patina restart'."
         return
     fi
     local fd=$REPLY
