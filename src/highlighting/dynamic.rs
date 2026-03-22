@@ -133,6 +133,20 @@ impl DynamicTokenGroup {
             Ok(())
         };
 
+        let ensure_resolve_tilde = |s: &mut String, resolve_tilde: &mut bool| -> Result<()> {
+            // resolve tilde only if the whole string is a tilde or if it starts
+            // with '~/', because '~foobar', for example, should not be resolved
+            if *resolve_tilde && (s == "~" || s.starts_with("~/")) {
+                let home = env::var_os("HOME").context("$HOME not set")?;
+                s.replace_range(
+                    0..1,
+                    home.to_str().context("Unable to convert $HOME to string")?,
+                );
+            }
+            *resolve_tilde = false;
+            Ok(())
+        };
+
         for t in &self.tokens {
             if t.scope != DynamicScope::CharacterEscapeQuotedAnsi && !utf8_buf.is_empty() {
                 flush_utf8(&mut utf8_buf, &mut s)?;
@@ -146,6 +160,7 @@ impl DynamicTokenGroup {
                             && c.is_whitespace()
                         {
                             if !s.is_empty() {
+                                ensure_resolve_tilde(&mut s, &mut resolve_tilde)?;
                                 result.push((s, start..end));
                             }
 
@@ -241,17 +256,8 @@ impl DynamicTokenGroup {
 
         flush_utf8(&mut utf8_buf, &mut s)?;
 
-        // resolve tilde only if the whole string is a tilde or if it starts
-        // with '~/', because '~foobar', for example, should not be resolved
-        if resolve_tilde && (s == "~" || s.starts_with("~/")) {
-            let home = env::var_os("HOME").context("$HOME not set")?;
-            s.replace_range(
-                0..1,
-                home.to_str().context("Unable to convert $HOME to string")?,
-            );
-        }
-
         if !s.is_empty() {
+            ensure_resolve_tilde(&mut s, &mut resolve_tilde)?;
             result.push((s, start..end));
         }
 
@@ -351,9 +357,13 @@ impl DynamicTokenGroupBuilder {
                 ));
             }
             current_group.current_start = i;
-        } else if !self.group_stack.is_empty() && scope == self.scopes.tilde_meta_scope {
-            // this can be ignored - tilde will be caught by
+        } else if let Some(current_group) = self.group_stack.last_mut()
+            && scope == self.scopes.tilde_meta_scope
+        {
+            // result of pop can be ignored - tilde will be caught by
             // `tilde_variable_scope`
+            current_group.current_scope.pop();
+            current_group.current_start = i;
         } else if self.group_stack.is_empty()
             && scope == self.scopes.character_escape_scope
             && let Some(ce) = self.character_escape_buf.last_mut()

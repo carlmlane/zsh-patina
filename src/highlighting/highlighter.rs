@@ -947,6 +947,8 @@ mod tests {
     #[test]
     fn path_with_tilde() -> Result<()> {
         let dir = tempfile::tempdir()?;
+        let test_path = dir.path().join("test.txt");
+        fs::write(test_path, "test contents")?;
         let pwd = Some(dir.path().to_str().unwrap());
 
         let highlighter = Highlighter::new(&test_config())?;
@@ -954,6 +956,8 @@ mod tests {
         let string_style = resolve_static_style(STRING_QUOTED_DOUBLE, &highlighter.theme).unwrap();
         let dynamic_directory_style =
             resolve_static_style(DYNAMIC_PATH_DIRECTORY, &highlighter.theme).unwrap();
+        let dynamic_file_style =
+            resolve_static_style(DYNAMIC_PATH_FILE, &highlighter.theme).unwrap();
         let dynamic_tilde_directory_style = mix_styles(
             &SpanStyle::Static(tilde_style.clone()),
             &SpanStyle::Static(dynamic_directory_style.clone()),
@@ -997,7 +1001,36 @@ mod tests {
                 Span {
                     start: 4,
                     end: 5,
+                    style: SpanStyle::Static(dynamic_directory_style.clone())
+                }
+            ]
+        );
+
+        let highlighted = highlighter.highlight("ls ~/ test.txt", pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 2,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable {
+                        parsed_callable: "ls".to_string()
+                    })
+                },
+                Span {
+                    start: 3,
+                    end: 4,
+                    style: dynamic_tilde_directory_style.clone()
+                },
+                Span {
+                    start: 4,
+                    end: 5,
                     style: SpanStyle::Static(dynamic_directory_style)
+                },
+                Span {
+                    start: 6,
+                    end: 14,
+                    style: SpanStyle::Static(dynamic_file_style)
                 }
             ]
         );
