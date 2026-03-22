@@ -1134,6 +1134,45 @@ mod tests {
     }
 
     #[test]
+    fn path_followed_by_parameter() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let test_path = dir.path().join("test.txt");
+        fs::write(test_path, "test contents")?;
+        let pwd = Some(dir.path().to_str().unwrap());
+
+        let highlighter = Highlighter::new(&test_config())?;
+        let dynamic_file_style =
+            resolve_static_style(DYNAMIC_PATH_FILE, &highlighter.theme).unwrap();
+        let parameter_style = resolve_static_style(PARAMETER, &highlighter.theme).unwrap();
+
+        let highlighted = highlighter.highlight("foo test.txt -C", pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 3,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable {
+                        parsed_callable: "foo".to_string()
+                    })
+                },
+                Span {
+                    start: 4,
+                    end: 12,
+                    style: SpanStyle::Static(dynamic_file_style.clone()),
+                },
+                Span {
+                    start: 12,
+                    end: 15,
+                    style: SpanStyle::Static(parameter_style.clone()),
+                }
+            ]
+        );
+
+        Ok(())
+    }
+
+    #[test]
     fn double_quoted_callable() -> Result<()> {
         let dir = tempfile::tempdir()?;
         let pwd = Some(dir.path().to_str().unwrap());
@@ -1819,6 +1858,8 @@ mod tests {
 
         let highlighter = Highlighter::new(&test_config())?;
         let env_var_style = resolve_static_style(ENVIRONMENT_VARIABLE, &highlighter.theme).unwrap();
+        let dynamic_file_style =
+            resolve_static_style(DYNAMIC_PATH_FILE, &highlighter.theme).unwrap();
 
         let highlighted = highlighter.highlight(r"ls test.txt$FOOBAR", pwd, |_| true)?;
         assert_eq!(
@@ -1835,6 +1876,55 @@ mod tests {
                     start: 11,
                     end: 18,
                     style: SpanStyle::Static(env_var_style.clone())
+                }
+            ]
+        );
+
+        let highlighted = highlighter.highlight(r"ls ${FOOBAR}test.txt test.txt", pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 2,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable {
+                        parsed_callable: "ls".to_string()
+                    })
+                },
+                Span {
+                    start: 3,
+                    end: 12,
+                    style: SpanStyle::Static(env_var_style.clone())
+                },
+                Span {
+                    start: 21,
+                    end: 29,
+                    style: SpanStyle::Static(dynamic_file_style.clone())
+                }
+            ]
+        );
+
+        let highlighted =
+            highlighter.highlight(r"ls test.txt${FOOBAR}test.txt test.txt", pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 2,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable {
+                        parsed_callable: "ls".to_string()
+                    })
+                },
+                Span {
+                    start: 11,
+                    end: 20,
+                    style: SpanStyle::Static(env_var_style.clone())
+                },
+                Span {
+                    start: 29,
+                    end: 37,
+                    style: SpanStyle::Static(dynamic_file_style.clone())
                 }
             ]
         );

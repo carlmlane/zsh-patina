@@ -122,6 +122,7 @@ impl DynamicTokenGroup {
         let mut end = start;
         let mut utf8_buf: Vec<u8> = Vec::new();
         let mut resolve_tilde = false;
+        let mut is_poison = false;
 
         let flush_utf8 = |buf: &mut Vec<u8>, s: &mut String| -> Result<()> {
             if !buf.is_empty() {
@@ -159,7 +160,7 @@ impl DynamicTokenGroup {
                         if let Some(c) = args.peek()
                             && c.is_whitespace()
                         {
-                            if !s.is_empty() {
+                            if !s.is_empty() && !is_poison {
                                 ensure_resolve_tilde(&mut s, &mut resolve_tilde)?;
                                 result.push((s, start..end));
                             }
@@ -174,6 +175,7 @@ impl DynamicTokenGroup {
 
                             s = String::new();
                             start = end;
+                            is_poison = false;
                         }
 
                         if args.peek().is_none() {
@@ -239,15 +241,33 @@ impl DynamicTokenGroup {
                 }
 
                 DynamicScope::PoisonPill => {
-                    // A poison pill means that the current string contains a
-                    // scope that prevents this string from being dynamically
-                    // highlighted (e.g. an environment variable or a command
-                    // substitution). Throw away this string.
-                    s = String::new();
+                    // A poison pill means that either the current or the next
+                    // string contains a scope that prevents it from being
+                    // dynamically highlighted (e.g. an environment variable or
+                    // a command substitution).
 
-                    // skip poison pill contents
                     let c = &line[t.byte_range.clone()];
                     let len = c.chars().count();
+                    if len > 0 && c.starts_with(|b: char| b.is_whitespace()) {
+                        // the poison pill starts with a whitespace, which means
+                        // we must keep the current string and throw away the
+                        // next one
+                        if !s.is_empty() {
+                            ensure_resolve_tilde(&mut s, &mut resolve_tilde)?;
+                            result.push((s, start..end));
+                        }
+                        s = String::new();
+                        is_poison = true;
+                    } else {
+                        // The poison pill does not start with a whitespace,
+                        // which means it's part of the current string. Throw it
+                        // away and also throw away anything else until the next
+                        // whitespace.
+                        s = String::new();
+                        is_poison = true;
+                    }
+
+                    // skip poison pill contents
                     end += len;
                     start = end;
                 }
@@ -256,7 +276,7 @@ impl DynamicTokenGroup {
 
         flush_utf8(&mut utf8_buf, &mut s)?;
 
-        if !s.is_empty() {
+        if !s.is_empty() && !is_poison {
             ensure_resolve_tilde(&mut s, &mut resolve_tilde)?;
             result.push((s, start..end));
         }
