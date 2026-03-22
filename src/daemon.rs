@@ -26,10 +26,16 @@ enum Role {
     Daemon,
 }
 
+/// The version of the communication protocol between the Zsh client and the
+/// highlighting daemon. Increase this version number whenever there has been
+/// a breaking change.
+const PROTOCOL_VERSION: &str = "1";
+
 #[derive(Template)]
 #[template(path = "zsh-patina.zsh")]
 struct ActivateTemplate {
     zsh_patina_path: String,
+    version: &'static str,
 }
 
 fn pid_path(data_dir: &Path) -> PathBuf {
@@ -145,6 +151,7 @@ fn handle_connection(mut stream: UnixStream, highlighter: Arc<Highlighter>) -> R
     reader
         .read_line(&mut header)
         .context("Unable to read header")?;
+    let mut client_version = None;
     let mut term_cols = 1000;
     let mut term_rows = 1000;
     let mut cursor = 0;
@@ -156,6 +163,9 @@ fn handle_connection(mut stream: UnixStream, highlighter: Arc<Highlighter>) -> R
             .split_once("=")
             .context("Unable to split header key-value pair")?;
         match key {
+            "ver" => {
+                client_version = Some(value);
+            }
             "term_cols" => {
                 term_cols = value
                     .parse::<usize>()
@@ -222,6 +232,13 @@ fn handle_connection(mut stream: UnixStream, highlighter: Arc<Highlighter>) -> R
 
         line_lengths.push(line_len);
         total_len += line_len;
+    }
+
+    // check if the client version matches ours
+    if client_version.is_none_or(|v| v != PROTOCOL_VERSION) {
+        // Return immediately. This will close the connection with an empty
+        // response.
+        return Ok(());
     }
 
     // Performance: Limit spans to a window around the cursor. This is necessary
@@ -328,6 +345,7 @@ pub fn activate(data_dir: &Path, config: &Config) -> Result<()> {
 
         let template = ActivateTemplate {
             zsh_patina_path: exe.to_str().unwrap().to_string(),
+            version: PROTOCOL_VERSION,
         };
 
         let mut s = stdout().lock();

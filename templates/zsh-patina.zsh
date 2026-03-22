@@ -103,7 +103,7 @@ _zsh_patina() {
 
     {
         # send header
-        print -r -- "term_cols=$COLUMNS term_rows=$LINES cursor=$CURSOR pre_buffer_line_count=$pre_count buffer_line_count=$count pwd=$_ZSH_PATINA_ENCODED_PWD"
+        print -r -- "ver=<{version}> term_cols=$COLUMNS term_rows=$LINES cursor=$CURSOR pre_buffer_line_count=$pre_count buffer_line_count=$count pwd=$_ZSH_PATINA_ENCODED_PWD"
 
         # send pre-buffer lines
         if (( pre_count != 0 )); then
