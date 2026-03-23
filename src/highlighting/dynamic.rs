@@ -22,6 +22,7 @@ pub enum DynamicScope {
     StringQuotedSingleAnsi,
     StringQuotedDouble,
     Tilde,
+    Redirection,
     PoisonPill,
 }
 
@@ -112,46 +113,72 @@ impl DynamicTokenGroup {
     }
 
     fn parse(&self, line: &str) -> Result<Vec<(String, Range<usize>)>> {
-        let mut result = Vec::new();
         if self.tokens.is_empty() {
-            return Ok(result);
+            return Ok(Vec::new());
         }
 
-        let mut s = String::new();
-        let mut start = line[0..self.tokens[0].byte_range.start].chars().count();
-        let mut end = start;
-        let mut utf8_buf: Vec<u8> = Vec::new();
-        let mut resolve_tilde = false;
-        let mut is_poison = false;
+        struct State {
+            s: String,
+            start: usize,
+            end: usize,
+            utf8_buf: Vec<u8>,
+            resolve_tilde: bool,
+            is_poison: bool,
+            result: Vec<(String, Range<usize>)>,
+        }
 
-        let flush_utf8 = |buf: &mut Vec<u8>, s: &mut String| -> Result<()> {
-            if !buf.is_empty() {
-                let decoded = std::str::from_utf8(buf)
-                    .with_context(|| format!("Invalid UTF-8 byte sequence: {buf:02x?}"))?;
-                s.push_str(decoded);
-                buf.clear();
+        impl State {
+            fn flush_utf8(&mut self) -> Result<()> {
+                if !self.utf8_buf.is_empty() {
+                    let decoded = std::str::from_utf8(&self.utf8_buf).with_context(|| {
+                        format!("Invalid UTF-8 byte sequence: {:02x?}", self.utf8_buf)
+                    })?;
+                    self.s.push_str(decoded);
+                    self.utf8_buf.clear();
+                }
+                Ok(())
             }
-            Ok(())
-        };
 
-        let ensure_resolve_tilde = |s: &mut String, resolve_tilde: &mut bool| -> Result<()> {
-            // resolve tilde only if the whole string is a tilde or if it starts
-            // with '~/', because '~foobar', for example, should not be resolved
-            if *resolve_tilde && (s == "~" || s.starts_with("~/")) {
-                let home = dirs::home_dir().context("Unable to find home directory")?;
-                s.replace_range(
-                    0..1,
-                    home.to_str()
-                        .context("Unable to convert home directory to string")?,
-                );
+            fn push_string(&mut self) -> Result<()> {
+                if !self.s.is_empty() && !self.is_poison {
+                    // resolve tilde only if the whole string is a tilde or if it starts
+                    // with '~/', because '~foobar', for example, should not be resolved
+                    if self.resolve_tilde && (self.s == "~" || self.s.starts_with("~/")) {
+                        let home = dirs::home_dir().context("Unable to find home directory")?;
+                        self.s.replace_range(
+                            0..1,
+                            home.to_str()
+                                .context("Unable to convert home directory to string")?,
+                        );
+                    }
+
+                    self.result
+                        .push((std::mem::take(&mut self.s), self.start..self.end));
+                } else {
+                    self.s = String::new();
+                }
+
+                self.is_poison = false;
+                self.resolve_tilde = false;
+
+                Ok(())
             }
-            *resolve_tilde = false;
-            Ok(())
+        }
+
+        let chars_count = line[0..self.tokens[0].byte_range.start].chars().count();
+        let mut state = State {
+            s: String::new(),
+            start: chars_count,
+            end: chars_count,
+            utf8_buf: Vec::new(),
+            resolve_tilde: false,
+            is_poison: false,
+            result: Vec::new(),
         };
 
         for t in &self.tokens {
-            if t.scope != DynamicScope::CharacterEscapeQuotedAnsi && !utf8_buf.is_empty() {
-                flush_utf8(&mut utf8_buf, &mut s)?;
+            if t.scope != DynamicScope::CharacterEscapeQuotedAnsi && !state.utf8_buf.is_empty() {
+                state.flush_utf8()?;
             }
 
             match t.scope {
@@ -161,22 +188,17 @@ impl DynamicTokenGroup {
                         if let Some(c) = args.peek()
                             && c.is_whitespace()
                         {
-                            if !s.is_empty() && !is_poison {
-                                ensure_resolve_tilde(&mut s, &mut resolve_tilde)?;
-                                result.push((s, start..end));
-                            }
+                            state.push_string()?;
 
                             // skip whitespace
                             while let Some(c) = args.peek()
                                 && c.is_whitespace()
                             {
                                 args.next().unwrap();
-                                end += 1;
+                                state.end += 1;
                             }
 
-                            s = String::new();
-                            start = end;
-                            is_poison = false;
+                            state.start = state.end;
                         }
 
                         if args.peek().is_none() {
@@ -186,8 +208,8 @@ impl DynamicTokenGroup {
                         while let Some(c) = args.peek()
                             && !c.is_whitespace()
                         {
-                            s.push(args.next().unwrap());
-                            end += 1;
+                            state.s.push(args.next().unwrap());
+                            state.end += 1;
                         }
                     }
                 }
@@ -198,47 +220,55 @@ impl DynamicTokenGroup {
                 | DynamicScope::StringQuotedDouble => {
                     let c = &line[t.byte_range.clone()];
                     let len = c.chars().count();
-                    s.push_str(c);
-                    end += len;
+                    state.s.push_str(c);
+                    state.end += len;
                 }
 
                 DynamicScope::CharacterEscape => {
                     let c = &line[t.byte_range.clone()];
                     let len = c.chars().count();
-                    s.push_str(&c[1..]); // trim leading '\'
-                    end += len;
+                    state.s.push_str(&c[1..]); // trim leading '\'
+                    state.end += len;
                 }
 
                 DynamicScope::CharacterEscapeQuotedAnsi => {
                     let c = &line[t.byte_range.clone()];
                     let len = c.chars().count();
                     if let Some(byte) = c.zsh_unescape_utf8_byte()? {
-                        utf8_buf.push(byte);
+                        state.utf8_buf.push(byte);
                     } else {
-                        s.push(c.zsh_unescape_char()?);
+                        state.s.push(c.zsh_unescape_char()?);
                     }
-                    end += len;
+                    state.end += len;
                 }
 
                 DynamicScope::StringQuotedBegin => {
-                    end += line[t.byte_range.clone()].chars().count();
+                    state.end += line[t.byte_range.clone()].chars().count();
                 }
 
                 DynamicScope::StringQuotedEnd => {
-                    end += 1;
+                    state.end += 1;
                 }
 
                 DynamicScope::Tilde => {
                     let c = &line[t.byte_range.clone()];
 
                     // resolve tilde at the beginning of a string
-                    if start == end {
-                        resolve_tilde = true;
+                    if state.start == state.end {
+                        state.resolve_tilde = true;
                     }
-                    s.push_str(c);
+                    state.s.push_str(c);
 
                     let len = c.chars().count();
-                    end += len;
+                    state.end += len;
+                }
+
+                DynamicScope::Redirection => {
+                    state.push_string()?;
+                    let c = &line[t.byte_range.clone()];
+                    let len = c.chars().count();
+                    state.end += len;
+                    state.start = state.end;
                 }
 
                 DynamicScope::PoisonPill => {
@@ -253,36 +283,27 @@ impl DynamicTokenGroup {
                         // the poison pill starts with a whitespace, which means
                         // we must keep the current string and throw away the
                         // next one
-                        if !s.is_empty() {
-                            ensure_resolve_tilde(&mut s, &mut resolve_tilde)?;
-                            result.push((s, start..end));
-                        }
-                        s = String::new();
-                        is_poison = true;
+                        state.push_string()?;
+                        state.is_poison = true;
                     } else {
                         // The poison pill does not start with a whitespace,
                         // which means it's part of the current string. Throw it
                         // away and also throw away anything else until the next
                         // whitespace.
-                        s = String::new();
-                        is_poison = true;
+                        state.is_poison = true;
                     }
 
                     // skip poison pill contents
-                    end += len;
-                    start = end;
+                    state.end += len;
+                    state.start = state.end;
                 }
             }
         }
 
-        flush_utf8(&mut utf8_buf, &mut s)?;
+        state.flush_utf8()?;
+        state.push_string()?;
 
-        if !s.is_empty() && !is_poison {
-            ensure_resolve_tilde(&mut s, &mut resolve_tilde)?;
-            result.push((s, start..end));
-        }
-
-        Ok(result)
+        Ok(state.result)
     }
 }
 
@@ -298,6 +319,7 @@ pub struct DynamicScopes {
     string_quoted_double_scope: Scope,
     tilde_variable_scope: Scope,
     tilde_meta_scope: Scope,
+    redirection_scope: Scope,
 }
 
 impl DynamicScopes {
@@ -312,6 +334,7 @@ impl DynamicScopes {
         let string_quoted_double_scope = Scope::new(STRING_QUOTED_DOUBLE).unwrap();
         let tilde_variable_scope = Scope::new(TILDE_VARIABLE).unwrap();
         let tilde_meta_scope = Scope::new(TILDE_META).unwrap();
+        let redirection_scope = Scope::new(REDIRECTION).unwrap();
         Self {
             arguments_scope,
             callable_scope,
@@ -323,6 +346,7 @@ impl DynamicScopes {
             string_quoted_double_scope,
             tilde_variable_scope,
             tilde_meta_scope,
+            redirection_scope,
         }
     }
 }
@@ -367,6 +391,7 @@ impl DynamicTokenGroupBuilder {
                 || scope == self.scopes.string_quoted_sigle_ansi_scope
                 || scope == self.scopes.string_quoted_double_scope
                 || scope == self.scopes.tilde_variable_scope
+                || scope == self.scopes.redirection_scope
                 || current_group.current_scope.last() == Some(&DynamicScope::PoisonPill))
         {
             if let Some(current_scope) = current_group.current_scope.pop()
@@ -468,6 +493,8 @@ impl DynamicTokenGroupBuilder {
                             || *scope == self.scopes.tilde_meta_scope
                         {
                             DynamicScope::Tilde
+                        } else if *scope == self.scopes.redirection_scope {
+                            DynamicScope::Redirection
                         } else {
                             // Unknown token found. We should not dynamically
                             // highlight this group. Insert a poison pill so

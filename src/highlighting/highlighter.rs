@@ -1172,6 +1172,128 @@ mod tests {
     }
 
     #[test]
+    fn redirection() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let test_path = dir.path().join("test.txt");
+        fs::write(test_path, "test contents")?;
+        let pwd = Some(dir.path().to_str().unwrap());
+
+        let highlighter = Highlighter::new(&test_config())?;
+        let dynamic_file_style =
+            resolve_static_style(DYNAMIC_PATH_FILE, &highlighter.theme).unwrap();
+        let redirection_style = resolve_static_style(REDIRECTION, &highlighter.theme).unwrap();
+        let env_var_style = resolve_static_style(ENVIRONMENT_VARIABLE, &highlighter.theme).unwrap();
+
+        let highlighted = highlighter.highlight("echo hello > test.txt", pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 4,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable {
+                        parsed_callable: "echo".to_string()
+                    })
+                },
+                Span {
+                    start: 11,
+                    end: 12,
+                    style: SpanStyle::Static(redirection_style.clone()),
+                },
+                Span {
+                    start: 13,
+                    end: 21,
+                    style: SpanStyle::Static(dynamic_file_style.clone()),
+                }
+            ]
+        );
+
+        let highlighted = highlighter.highlight("echo hello>test.txt", pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 4,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable {
+                        parsed_callable: "echo".to_string()
+                    })
+                },
+                Span {
+                    start: 10,
+                    end: 11,
+                    style: SpanStyle::Static(redirection_style.clone()),
+                },
+                Span {
+                    start: 11,
+                    end: 19,
+                    style: SpanStyle::Static(dynamic_file_style.clone()),
+                }
+            ]
+        );
+
+        let highlighted = highlighter.highlight("echo ${FOO}hello>test.txt", pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 4,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable {
+                        parsed_callable: "echo".to_string()
+                    })
+                },
+                Span {
+                    start: 5,
+                    end: 11,
+                    style: SpanStyle::Static(env_var_style.clone()),
+                },
+                Span {
+                    start: 16,
+                    end: 17,
+                    style: SpanStyle::Static(redirection_style.clone()),
+                },
+                Span {
+                    start: 17,
+                    end: 25,
+                    style: SpanStyle::Static(dynamic_file_style.clone()),
+                }
+            ]
+        );
+
+        let highlighted = highlighter.highlight("echo hello$FOO>test.txt", pwd, |_| true)?;
+        assert_eq!(
+            highlighted,
+            vec![
+                Span {
+                    start: 0,
+                    end: 4,
+                    style: SpanStyle::Dynamic(DynamicStyle::Callable {
+                        parsed_callable: "echo".to_string()
+                    })
+                },
+                Span {
+                    start: 10,
+                    end: 14,
+                    style: SpanStyle::Static(env_var_style.clone()),
+                },
+                Span {
+                    start: 14,
+                    end: 15,
+                    style: SpanStyle::Static(redirection_style.clone()),
+                },
+                Span {
+                    start: 15,
+                    end: 23,
+                    style: SpanStyle::Static(dynamic_file_style.clone()),
+                }
+            ]
+        );
+
+        Ok(())
+    }
+
+    #[test]
     fn double_quoted_callable() -> Result<()> {
         let dir = tempfile::tempdir()?;
         let pwd = Some(dir.path().to_str().unwrap());

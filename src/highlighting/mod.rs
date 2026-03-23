@@ -28,6 +28,8 @@ const STRING_QUOTED_DOUBLE: &str = "string.quoted.double.shell";
 const STRING_QUOTED_BEGIN: &str = "punctuation.definition.string.begin.shell";
 const STRING_QUOTED_END: &str = "punctuation.definition.string.end.shell";
 
+const REDIRECTION: &str = "keyword.operator.assignment.redirection.shell";
+
 #[cfg(test)]
 const ENVIRONMENT_VARIABLE: &str = "variable.other.readwrite.shell";
 #[cfg(test)]
