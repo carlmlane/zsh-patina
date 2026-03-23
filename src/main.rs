@@ -218,14 +218,17 @@ fn run() -> Result<()> {
 
     // load config file
     let config_file_path = config_dir.join("config.toml");
-    let config = if fs::exists(&config_file_path)? {
-        Figment::new()
-            .merge(Serialized::defaults(Config::default()))
-            .merge(Toml::file(&config_file_path))
-            .extract()
-            .with_context(|| format!("Unable to read config file {config_file_path:?}"))?
+    let (config, config_found) = if fs::exists(&config_file_path)? {
+        (
+            Figment::new()
+                .merge(Serialized::defaults(Config::default()))
+                .merge(Toml::file(&config_file_path))
+                .extract()
+                .with_context(|| format!("Unable to read config file {config_file_path:?}"))?,
+            true,
+        )
     } else {
-        Config::default()
+        (Config::default(), false)
     };
 
     match args.command {
@@ -241,6 +244,9 @@ fn run() -> Result<()> {
         }
         Command::Status => status_daemon(&data_dir),
         Command::Check => {
+            if !config_found {
+                println!("No config file found. Using default settings.");
+            }
             check_config(&config)?;
             println!("Everything is OK.");
             Ok(())
