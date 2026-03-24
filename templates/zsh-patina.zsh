@@ -136,8 +136,28 @@ _zsh_patina() {
     local fd=$REPLY
 
     {
+        # build header
+        local header="ver=<{version}> term_cols=$COLUMNS term_rows=$LINES cursor=$CURSOR pre_buffer_line_count=$pre_count buffer_line_count=$count pwd=$_ZSH_PATINA_ENCODED_PWD"
+
+        if (( $+REGION_ACTIVE )) && (( REGION_ACTIVE != 0 )); then
+            _zsh_patina_encode_string "${${zle_highlight[(r)region:*]-}#*:}"
+            header="${header} region_active=$REGION_ACTIVE mark=$MARK zle_highlight_region=$REPLY"
+        fi
+        if (( $+SUFFIX_ACTIVE )) && (( SUFFIX_ACTIVE != 0 )); then
+            _zsh_patina_encode_string "${${zle_highlight[(r)suffix:*]-}#*:}"
+            header="${header} suffix_active=$SUFFIX_ACTIVE suffix_start=$SUFFIX_START suffix_end=$SUFFIX_END zle_highlight_suffix=$REPLY"
+        fi
+        if (( $+ISEARCHMATCH_ACTIVE )) && (( ISEARCHMATCH_ACTIVE != 0 )); then
+            _zsh_patina_encode_string "${${zle_highlight[(r)isearch:*]-}#*:}"
+            header="${header} isearch_active=$ISEARCHMATCH_ACTIVE isearch_start=$ISEARCHMATCH_START isearch_end=$ISEARCHMATCH_END zle_highlight_isearch=$REPLY"
+        fi
+        if (( $+YANK_ACTIVE )) && (( YANK_ACTIVE != 0 )); then
+            _zsh_patina_encode_string "${${zle_highlight[(r)paste:*]-}#*:}"
+            header="${header} yank_active=$YANK_ACTIVE yank_start=$YANK_START yank_end=$YANK_END zle_highlight_paste=$REPLY"
+        fi
+
         # send header
-        print -r -- "ver=<{version}> term_cols=$COLUMNS term_rows=$LINES cursor=$CURSOR pre_buffer_line_count=$pre_count buffer_line_count=$count pwd=$_ZSH_PATINA_ENCODED_PWD"
+        print -r -- $header
 
         # send pre-buffer lines
         if (( pre_count != 0 )); then

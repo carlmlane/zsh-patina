@@ -144,6 +144,38 @@ fn encode_string(input: String) -> String {
     out
 }
 
+/// Add a region with a Zsh `zle_highlight` style if the region is active. The
+/// region is defined by `start` and `end`, and the style is defined by
+/// `zle_highlight` (e.g. `underline`). If the region is active but
+/// `zle_highlight` is empty, the `default_value` will be used.
+fn add_zle_highlight(
+    active: Option<&str>,
+    start: Option<usize>,
+    end: Option<usize>,
+    zle_highlight: Option<String>,
+    default_value: &str,
+    stream: &mut UnixStream,
+) -> Result<()> {
+    if let Some(active) = active
+        && active != "0"
+        && let Some(start) = start
+        && let Some(end) = end
+    {
+        let style = zle_highlight
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| default_value.to_string());
+        let (from, to) = if start < end {
+            (start, end)
+        } else {
+            (end, start)
+        };
+        stream
+            .write_all(format!("{from} {to} {style}\n").as_bytes())
+            .context("Unable to send response")?;
+    }
+    Ok(())
+}
+
 fn handle_connection(mut stream: UnixStream, highlighter: Arc<Highlighter>) -> Result<()> {
     let mut reader = BufReader::new(&stream);
 
@@ -152,22 +184,45 @@ fn handle_connection(mut stream: UnixStream, highlighter: Arc<Highlighter>) -> R
     reader
         .read_line(&mut header)
         .context("Unable to read header")?;
+
     let mut client_version = None;
+
     let mut term_cols = 1000;
     let mut term_rows = 1000;
     let mut cursor = 0;
+
     let mut pre_buffer_line_count = 0;
     let mut buffer_line_count = 0;
+
     let mut pwd = None;
     let mut cmd = None;
+
+    let mut region_active = None;
+    let mut mark = None;
+    let mut zle_highlight_region = None;
+
+    let mut suffix_active = None;
+    let mut suffix_start = None;
+    let mut suffix_end = None;
+    let mut zle_highlight_suffix = None;
+
+    let mut isearch_active = None;
+    let mut isearch_start = None;
+    let mut isearch_end = None;
+    let mut zle_highlight_isearch = None;
+
+    let mut yank_active = None;
+    let mut yank_start = None;
+    let mut yank_end = None;
+    let mut zle_highlight_paste = None;
+
     for h in header.split_ascii_whitespace() {
         let (key, value) = h
             .split_once("=")
             .context("Unable to split header key-value pair")?;
         match key {
-            "ver" => {
-                client_version = Some(value);
-            }
+            "ver" => client_version = Some(value),
+
             "term_cols" => {
                 term_cols = value
                     .parse::<usize>()
@@ -183,6 +238,7 @@ fn handle_connection(mut stream: UnixStream, highlighter: Arc<Highlighter>) -> R
                     .parse::<usize>()
                     .context("Unable to parse cursor position")?;
             }
+
             "pre_buffer_line_count" => {
                 pre_buffer_line_count = value
                     .parse::<usize>()
@@ -193,12 +249,71 @@ fn handle_connection(mut stream: UnixStream, highlighter: Arc<Highlighter>) -> R
                     .parse::<usize>()
                     .context("Unable to parse number of lines in buffer")?;
             }
-            "pwd" => {
-                pwd = Some(decode_string(value));
+
+            "pwd" => pwd = Some(decode_string(value)),
+            "cmd" => cmd = Some(value),
+
+            "region_active" => region_active = Some(value),
+            "mark" => {
+                mark = Some(
+                    value
+                        .parse::<usize>()
+                        .context("Unable to parse mark position")?,
+                );
             }
-            "cmd" => {
-                cmd = Some(value);
+            "zle_highlight_region" => zle_highlight_region = Some(decode_string(value)),
+
+            "suffix_active" => suffix_active = Some(value),
+            "suffix_start" => {
+                suffix_start = Some(
+                    value
+                        .parse::<usize>()
+                        .context("Unable to parse suffix start position")?,
+                );
             }
+            "suffix_end" => {
+                suffix_end = Some(
+                    value
+                        .parse::<usize>()
+                        .context("Unable to parse suffix end position")?,
+                );
+            }
+            "zle_highlight_suffix" => zle_highlight_suffix = Some(decode_string(value)),
+
+            "isearch_active" => isearch_active = Some(value),
+            "isearch_start" => {
+                isearch_start = Some(
+                    value
+                        .parse::<usize>()
+                        .context("Unable to parse isearch start position")?,
+                );
+            }
+            "isearch_end" => {
+                isearch_end = Some(
+                    value
+                        .parse::<usize>()
+                        .context("Unable to parse isearch end position")?,
+                );
+            }
+            "zle_highlight_isearch" => zle_highlight_isearch = Some(decode_string(value)),
+
+            "yank_active" => yank_active = Some(value),
+            "yank_start" => {
+                yank_start = Some(
+                    value
+                        .parse::<usize>()
+                        .context("Unable to parse yank start position")?,
+                );
+            }
+            "yank_end" => {
+                yank_end = Some(
+                    value
+                        .parse::<usize>()
+                        .context("Unable to parse yank end position")?,
+                );
+            }
+            "zle_highlight_paste" => zle_highlight_paste = Some(decode_string(value)),
+
             _ => {}
         }
     }
@@ -346,6 +461,40 @@ fn handle_connection(mut stream: UnixStream, highlighter: Arc<Highlighter>) -> R
                 .context("Unable to send response")?;
         }
     }
+
+    // apply zle_highlight styles
+    add_zle_highlight(
+        region_active,
+        mark,
+        Some(cursor),
+        zle_highlight_region,
+        "standout",
+        &mut stream,
+    )?;
+    add_zle_highlight(
+        suffix_active,
+        suffix_start,
+        suffix_end,
+        zle_highlight_suffix,
+        "bold",
+        &mut stream,
+    )?;
+    add_zle_highlight(
+        isearch_active,
+        isearch_start,
+        isearch_end,
+        zle_highlight_isearch,
+        "underline",
+        &mut stream,
+    )?;
+    add_zle_highlight(
+        yank_active,
+        yank_start,
+        yank_end,
+        zle_highlight_paste,
+        "standout",
+        &mut stream,
+    )?;
 
     Ok(())
 }
