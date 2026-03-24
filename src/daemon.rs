@@ -55,8 +55,9 @@ fn read_pid(pid_file: &Path) -> Option<u32> {
 
 /// Check whether a process with the given PID is currently alive.
 fn pid_alive(pid: u32) -> bool {
-    // kill(pid, 0) returns 0 if the process exists and we have permission to
-    // signal it
+    // SAFETY: This is safe because we're only passing a valid PID and a signal
+    // of 0, which does not actually send a signal. kill(pid, 0) returns 0 if
+    // the process exists and we have permission to signal it.
     unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
 }
 
@@ -599,6 +600,8 @@ fn start_daemon_internal(
         // true background daemon.
 
         // fork #1
+        // SAFETY: Forking is safe because we haven't created any threads yet
+        // and we will exit as soon as possible
         match unsafe { libc::fork() } {
             -1 => {
                 bail!("fork #1 failed");
@@ -613,9 +616,12 @@ fn start_daemon_internal(
         }
 
         // become session leader
+        // SAFETY: No preconditions — setsid() is always safe to call.
         unsafe { libc::setsid() };
 
         // fork #2
+        // SAFETY: Forking is safe because we haven't created any threads yet
+        // and we will exit as soon as possible
         match unsafe { libc::fork() } {
             -1 => {
                 bail!("fork #2 failed");
@@ -633,6 +639,10 @@ fn start_daemon_internal(
 
         // close all file descriptors so we're really decoupled from the parent
         // process
+        // SAFETY: `devnull` was just successfully opened so its fd is valid.
+        // stdin/stdout/stderr are valid target fds by definition. `devnull` is
+        // dropped after this block; the dup'd fds are independent copies so
+        // closing the original does not affect them.
         unsafe {
             let devnull = std::fs::File::open("/dev/null").unwrap();
             libc::dup2(devnull.as_raw_fd(), libc::STDIN_FILENO);
@@ -689,6 +699,8 @@ pub fn stop_daemon(data_dir: &Path) {
     if let Some(pid) = read_pid(&pid_file)
         && pid_alive(pid)
     {
+        // SAFETY: `pid` is known to be running. SIGTERM is a valid signal
+        // number.
         unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
 
         let _ = fs::remove_file(pid_file);

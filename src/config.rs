@@ -3,6 +3,7 @@ use std::time::Duration;
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{MapAccess, Visitor, value::MapAccessDeserializer},
+    ser::SerializeMap,
 };
 
 use crate::theme::ThemeSource;
@@ -120,7 +121,6 @@ impl Serialize for DynamicConfig {
         if self.callables == self.paths {
             serializer.serialize_bool(self.callables)
         } else {
-            use serde::ser::SerializeMap;
             let mut map = serializer.serialize_map(Some(2))?;
             map.serialize_entry("callables", &self.callables)?;
             map.serialize_entry("paths", &self.paths)?;
