@@ -11,6 +11,7 @@ pub enum Color {
     Magenta,
     Cyan,
     White,
+    Ansi256(u8),
     Rgb(u8, u8, u8),
 }
 
@@ -52,7 +53,10 @@ impl TryFrom<&str> for Color {
             "magenta" => Ok(Color::Magenta),
             "cyan" => Ok(Color::Cyan),
             "white" => Ok(Color::White),
-            _ => from_hex(value),
+            _ if value.starts_with('#') => from_hex(value),
+            _ => Ok(Color::Ansi256(value.parse().context(
+                r##"Color must either be a string referencing one of the eight ANSI colors "black", "red", "green", "yellow", "blue", "magenta", "cyan", or "white", a hex color in the format "#RRGGBB" or "#RGB", or an integer in the range 0-255 specifying an 8-bit ANSI color code."##,
+            )?)),
         }
     }
 }
@@ -74,6 +78,7 @@ impl From<&Color> for TermColor {
             Color::Magenta => TermColor::Magenta,
             Color::Cyan => TermColor::Cyan,
             Color::White => TermColor::White,
+            Color::Ansi256(c) => TermColor::Ansi256(*c),
             Color::Rgb(r, g, b) => TermColor::Rgb(*r, *g, *b),
         }
     }
@@ -91,6 +96,7 @@ impl Color {
             Color::Magenta => "magenta".to_string(),
             Color::Cyan => "cyan".to_string(),
             Color::White => "white".to_string(),
+            Color::Ansi256(c) => c.to_string(),
             Color::Rgb(r, g, b) => to_hex(r, g, b),
         }
     }

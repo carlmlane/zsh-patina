@@ -109,7 +109,7 @@ impl<'de> Deserialize<'de> for Style {
             type Value = Style;
 
             fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
-                formatter.write_str("string or style struct")
+                formatter.write_str("string, 8-bit number, or style struct")
             }
 
             fn visit_str<E>(self, value: &str) -> Result<Style, E>
@@ -122,14 +122,26 @@ impl<'de> Deserialize<'de> for Style {
                 })
             }
 
+            fn visit_i64<E>(self, value: i64) -> Result<Style, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Style {
+                    foreground: Some(
+                        Color::try_from(value.to_string().as_str()).map_err(E::custom)?,
+                    ),
+                    ..Default::default()
+                })
+            }
+
             fn visit_map<M>(self, map: M) -> Result<Style, M::Error>
             where
                 M: MapAccess<'de>,
             {
                 #[derive(Deserialize)]
                 struct Helper {
-                    foreground: Option<String>,
-                    background: Option<String>,
+                    foreground: Option<toml::Value>,
+                    background: Option<toml::Value>,
                     #[serde(default)]
                     bold: bool,
                     #[serde(default)]
@@ -141,11 +153,15 @@ impl<'de> Deserialize<'de> for Style {
                 Ok(Style {
                     foreground: h
                         .foreground
-                        .map(|fg| Color::try_from(fg.as_str()).map_err(M::Error::custom))
+                        .map(|fg| {
+                            Color::try_from(fg.to_string().as_str()).map_err(M::Error::custom)
+                        })
                         .transpose()?,
                     background: h
                         .background
-                        .map(|bg| Color::try_from(bg.as_str()).map_err(M::Error::custom))
+                        .map(|bg| {
+                            Color::try_from(bg.to_string().as_str()).map_err(M::Error::custom)
+                        })
                         .transpose()?,
                     bold: h.bold,
                     underline: h.underline,
