@@ -12,6 +12,23 @@ Besides normal static highlighting, zsh-patina is able to dynamically detect whe
 
 <img src="https://raw.githubusercontent.com/michel-kraemer/zsh-patina/4052ba10fcd79c2c7b1d558bad8037affc8077c0/.github/screenshot.png" alt="Screenshot" />
 
+## Table of contents
+
+* [How to install](#how-to-install)
+  * [Homebrew (for macOS)](#homebrew-for-macos)
+  * [Cargo (for Rust developers)](#cargo-for-rust-developers)
+  * [Zinit (for Zinit users)](#zinit-for-zinit-users)
+  * [flake.nix (for Nix users)](#flakenix-for-nix-users)
+  * [Pre-compiled binaries (for everyone)](#pre-compiled-binaries-for-everyone)
+  * [Build from source (for the brave ones)](#build-from-source-for-the-brave-ones)
+* [Configuration](#configuration)
+* [Theming](#theming)
+* [Benchmarks](#benchmarks)
+* [Troubleshooting](#troubleshooting)
+* [How to remove the plugin](#how-to-remove-the-plugin)
+* [Contributing](#contributing)
+* [License](#license)
+
 ## How to install
 
 ### Homebrew (for macOS)
@@ -402,7 +419,7 @@ In the unlikely case you don't like zsh-patina ☹️, you can remove it as foll
    rm -rf ~/.config/zsh-patina/
    ```
 
-## Contribute
+## Contributing
 
 I mostly built the plugin for myself because I wasn't satisfied with existing solutions (in terms of accuracy and performance). zsh-patina does one job, and it does it well IMHO.
 
