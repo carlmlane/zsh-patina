@@ -9,7 +9,7 @@ use figment::{
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 use crate::{
-    commands::{check_config, list_scopes, tokenize},
+    commands::{check, list_scopes, tokenize},
     config::Config,
     daemon::{activate, start_daemon, status_daemon, stop_daemon},
 };
@@ -89,17 +89,14 @@ fn run() -> Result<()> {
 
     // load config file
     let config_file_path = config_dir.join("config.toml");
-    let (config, config_found) = if fs::exists(&config_file_path)? {
-        (
-            Figment::new()
-                .merge(Serialized::defaults(Config::default()))
-                .merge(Toml::file(&config_file_path))
-                .extract()
-                .with_context(|| format!("Unable to read config file {config_file_path:?}"))?,
-            true,
-        )
+    let config = if fs::exists(&config_file_path)? {
+        Figment::new()
+            .merge(Serialized::defaults(Config::default()))
+            .merge(Toml::file(&config_file_path))
+            .extract()
+            .with_context(|| format!("Unable to read config file {config_file_path:?}"))?
     } else {
-        (Config::default(), false)
+        Config::default()
     };
 
     match args.command {
@@ -114,14 +111,7 @@ fn run() -> Result<()> {
             start_daemon(&data_dir, &config, false)
         }
         Command::Status => status_daemon(&data_dir),
-        Command::Check => {
-            if !config_found {
-                println!("No config file found. Using default settings.");
-            }
-            check_config(&config)?;
-            println!("Everything is OK.");
-            Ok(())
-        }
+        Command::Check => check(&config, &config_file_path, &data_dir),
         Command::Tokenize { input_file } => tokenize(&config, &input_file),
         Command::ListScopes => list_scopes(),
     }

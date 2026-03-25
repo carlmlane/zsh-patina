@@ -708,14 +708,22 @@ pub fn stop_daemon(data_dir: &Path) {
     }
 }
 
-pub fn status_daemon(data_dir: &Path) -> Result<()> {
+pub fn is_daemon_running(data_dir: &Path) -> Option<u32> {
     let pid_file = pid_path(data_dir);
     if let Some(pid) = read_pid(&pid_file)
         && pid_alive(pid)
     {
+        Some(pid)
+    } else {
+        None
+    }
+}
+
+pub fn status_daemon(data_dir: &Path) -> Result<()> {
+    if let Some(pid) = is_daemon_running(data_dir) {
         println!("Daemon is running. PID {pid}.");
         Ok(())
     } else {
-        bail!("Daemon is stopped");
+        bail!("Daemon is stopped.");
     }
 }
