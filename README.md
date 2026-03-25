@@ -323,6 +323,20 @@ Fastest times are displayed in **bold**.
 
 **Disclaimer:** Benchmarks are hard and the numbers may be different on other systems, so take these results with a grain of salt. You may want to run zsh-bench on your own system and with your own setup.
 
+## Troubleshooting
+
+If the plugin doesn't work as expected, please first check if you've followed the [install instructions](#how-to-install) correctly. The plugin must be activated in your `.zshrc` file, and this must happen **at the end of the file** (after all other instructions).
+
+You may also run zsh-patina's self-check:
+
+```shell
+zsh-patina check
+```
+
+If the self-check doesn't find any errors, it will print `Everything is OK`. Otherwise, you will get hints about what might be wrong.
+
+If this doesn't help and you cannot solve the issue yourself, please [open an issue](https://github.com/michel-kraemer/zsh-patina/issues).
+
 ## How to remove the plugin
 
 In the unlikely case you don't like zsh-patina ☹️, you can remove it as follows (note that these instructions assume you've installed the plugin in `~/.zsh-patina`):
