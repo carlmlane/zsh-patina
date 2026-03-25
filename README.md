@@ -115,6 +115,12 @@ A flake is provided to make the executable the plugin requires available in `/ni
    eval "$(${inputs.zsh-patina.packages.${pkgs.stdenv.hostPlatform.system}.default}/bin/zsh-patina activate)"
    ```
 
+4. Restart your terminal, or run:
+
+   ```shell
+   exec zsh
+   ```
+
 ### Pre-compiled binaries (for everyone)
 
 1. Visit https://github.com/michel-kraemer/zsh-patina/releases and download the appropriate archive for your system. There are binaries for Linux and macOS.
