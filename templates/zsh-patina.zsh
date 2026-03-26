@@ -85,6 +85,13 @@ _zsh_patina_decode_string() {
     REPLY="$s"
 }
 
+# Define a _zsh_highlight plugin for compatibility with other plugins that look
+# for a syntax highlighter. See https://github.com/michel-kraemer/zsh-patina/issues/10
+# for example.
+_zsh_highlight() {
+    _zsh_patina
+}
+
 _zsh_patina() {
     # start=$EPOCHREALTIME
 
