@@ -339,7 +339,13 @@ impl Highlighter {
 
         // mix into result
         if !mixins.is_empty() {
-            result = mix_spans(result, mixins);
+            result = mix_spans(
+                result,
+                mixins
+                    .into_iter()
+                    .filter(|m| predicate(&(m.start..m.end)))
+                    .collect(),
+            );
         }
 
         Ok(result)
