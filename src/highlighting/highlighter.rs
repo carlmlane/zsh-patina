@@ -224,6 +224,11 @@ impl Highlighter {
         })
     }
 
+    /// Return the theme used for highlighting
+    pub fn theme(&self) -> &Theme {
+        &self.theme
+    }
+
     /// Return a list of dynamic style choices the plugin has for callables
     pub fn callable_choices(&self) -> &[(String, StaticStyle)] {
         &self.callable_choices

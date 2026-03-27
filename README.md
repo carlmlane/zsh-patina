@@ -248,6 +248,12 @@ theme = "file:/path/to/mytheme.toml"
 
 The path must be absolute. It can start with a tilde `~` (for your home directory), and you can use environment variables such as `$HOME`.
 
+If you want a quick preview of all available themes with highlighted example commands, just run:
+
+```shell
+zsh-patina list-themes
+```
+
 ### Creating a custom theme
 
 A theme is a [TOML](https://toml.io/) file that maps **scopes** to **styles**. Each key is a scope name (note the quotation marks!) and each value is either a string denoting a foreground [color](#colors) or a [style](#styles). For example:

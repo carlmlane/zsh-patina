@@ -10,6 +10,7 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{Error, MapAccess, Visitor, value::MapAccessDeserializer},
 };
+use strum::EnumIter;
 use syntect::{
     highlighting::{
         Color as SyntectColor, ScopeSelector, ScopeSelectors, StyleModifier, Theme as SyntectTheme,
@@ -20,7 +21,7 @@ use syntect::{
 
 use crate::color::Color;
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, EnumIter, Debug)]
 pub enum ThemeSource {
     Classic,
     Lavender,

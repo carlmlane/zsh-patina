@@ -9,7 +9,7 @@ use figment::{
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 use crate::{
-    commands::{check, list_scopes, tokenize},
+    commands::{check, list_scopes, list_themes, tokenize},
     config::Config,
     daemon::{activate, start_daemon, status_daemon, stop_daemon},
 };
@@ -77,6 +77,9 @@ enum Command {
     /// List all scopes that can be used in a theme for highlighting (sorted
     /// alphabetically)
     ListScopes,
+
+    /// List available themes with small examples for preview
+    ListThemes,
 }
 
 fn run() -> Result<()> {
@@ -114,6 +117,7 @@ fn run() -> Result<()> {
         Command::Check => check(&config, &config_file_path, &data_dir),
         Command::Tokenize { input_file } => tokenize(&config, &input_file),
         Command::ListScopes => list_scopes(),
+        Command::ListThemes => list_themes(&config),
     }
 }
 
