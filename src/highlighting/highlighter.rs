@@ -20,17 +20,6 @@ use crate::{
     theme::{ScopeMapping, Theme, ThemeSource},
 };
 
-/// If the command starts with a prefix keyword (e.g. `time`), returns the byte
-/// offset where the rest of the command begins. This can be used to split the
-/// command and process the prefix and the rest separately.
-fn find_prefix_split(command: &str) -> Option<usize> {
-    if command.trim_ascii_start().starts_with("time ") {
-        Some(command.find("time ").unwrap() + 5)
-    } else {
-        None
-    }
-}
-
 fn mix_spans(base: Vec<Span>, mut mixins: Vec<Span>) -> Vec<Span> {
     // make sure mixins are sorted
     mixins.sort_unstable_by(|a, b| a.start.cmp(&b.start).then(a.end.cmp(&b.end)));
@@ -236,32 +225,6 @@ impl Highlighter {
 
     pub fn highlight<P>(&self, command: &str, pwd: Option<&str>, predicate: P) -> Result<Vec<Span>>
     where
-        P: Fn(&Range<usize>) -> bool + Copy,
-    {
-        if let Some(rest) = find_prefix_split(command) {
-            let mut spans = self.highlight_internal(&command[0..rest], pwd, predicate)?;
-            spans.extend(
-                self.highlight(&command[rest..], pwd, predicate)?
-                    .into_iter()
-                    .map(|mut s| {
-                        s.start += rest;
-                        s.end += rest;
-                        s
-                    }),
-            );
-            Ok(spans)
-        } else {
-            self.highlight_internal(command, pwd, predicate)
-        }
-    }
-
-    fn highlight_internal<P>(
-        &self,
-        command: &str,
-        pwd: Option<&str>,
-        predicate: P,
-    ) -> Result<Vec<Span>>
-    where
         P: Fn(&Range<usize>) -> bool,
     {
         let start = Instant::now();
@@ -376,22 +339,6 @@ impl Highlighter {
     }
 
     pub fn tokenize(&self, command: &str) -> Result<Vec<Token>> {
-        if let Some(rest) = find_prefix_split(command) {
-            let mut tokens = self.tokenize_internal(&command[0..rest])?;
-            tokens.extend(self.tokenize(&command[rest..])?.into_iter().map(|mut t| {
-                if t.line == 1 {
-                    t.column += rest;
-                }
-                t.range = (t.range.start + rest)..(t.range.end + rest);
-                t
-            }));
-            Ok(tokens)
-        } else {
-            self.tokenize_internal(command)
-        }
-    }
-
-    fn tokenize_internal(&self, command: &str) -> Result<Vec<Token>> {
         let syntax = self.syntax_set.find_syntax_by_extension("sh").unwrap();
 
         let mut offset = 0;

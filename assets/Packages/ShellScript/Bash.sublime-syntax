@@ -184,6 +184,9 @@ contexts:
     - match: \brepeat{{keyword_boundary_end}}
       scope: keyword.control.repeat.shell
       set: [cmd-post, repeat-args]
+    - match: \btime{{keyword_boundary_end}}
+      scope: keyword.control.flow.time.shell
+      pop: true
 
   case-preamble:
     - match: \bin(?=[^\w_-])
