@@ -429,12 +429,12 @@ If this doesn't help and you cannot solve the issue yourself, please [open an is
 
 In the unlikely case you don't like zsh-patina ☹️, you can remove it as follows (note that these instructions assume you've installed the plugin in `~/.zsh-patina`):
 
-1. Remove the `eval "$(~/zsh-patina activate)"` line from your `.zshrc`.
+1. Remove the `eval "$(~/.zsh-patina/zsh-patina activate)"` line from your `.zshrc`.
 2. Restart the terminal
 3. Stop the daemon:
 
    ```shell
-   ~/zsh-patina stop
+   ~/.zsh-patina/zsh-patina stop
    ```
 
 4. Delete the directory where `zsh-patina` is installed:
