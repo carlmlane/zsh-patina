@@ -16,3 +16,4 @@ Bash.sublime-syntax:
   * Limited `\xNN` escape sequence to two hex characters
 * Add `keyword.control.repeat.shell` scope
 * Add `repeat-args` context
+* Add `keyword.control.flow.time.shell` scope
