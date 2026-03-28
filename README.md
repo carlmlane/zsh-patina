@@ -81,6 +81,26 @@ zinit ice as"program" from"gh-r" pick"zsh-patina-*/zsh-patina" atload'eval "$(zs
 zinit light michel-kraemer/zsh-patina
 ```
 
+### AUR (for ArchLinux users)
+
+1. Install zsh-patina:
+
+    ```shell
+    $AUR_HELPER -S zsh-patina-git
+    ```
+
+2. Initialize the plugin at the end of your `.zshrc` file:
+
+   ```shell
+   echo 'eval "$(~/.cargo/bin/zsh-patina activate)"' >> ~/.zshrc
+   ```
+
+3. Restart your terminal, or run:
+
+   ```shell
+   exec zsh
+   ```
+
 ### flake.nix (for Nix users)
 
 A flake is provided to make the executable the plugin requires available in `/nix/store`.
