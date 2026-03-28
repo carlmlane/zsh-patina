@@ -18,6 +18,7 @@ Besides normal static highlighting, zsh-patina is able to dynamically detect whe
   * [Homebrew (for macOS)](#homebrew-for-macos)
   * [Cargo (for Rust developers)](#cargo-for-rust-developers)
   * [Zinit (for Zinit users)](#zinit-for-zinit-users)
+  * [AUR (for ArchLinux users)](#aur-for-archlinux-users)
   * [flake.nix (for Nix users)](#flakenix-for-nix-users)
   * [Pre-compiled binaries (for everyone)](#pre-compiled-binaries-for-everyone)
   * [Build from source (for the brave ones)](#build-from-source-for-the-brave-ones)
@@ -80,6 +81,28 @@ Just add the following two lines to your `.zshrc` file:
 zinit ice as"program" from"gh-r" pick"zsh-patina-*/zsh-patina" atload'eval "$(zsh-patina activate)"'
 zinit light michel-kraemer/zsh-patina
 ```
+
+### AUR (for ArchLinux users)
+
+1. Install zsh-patina:
+
+    ```shell
+    yay -S zsh-patina-git
+    # or
+    paru -S zsh-patina-git
+    ```
+
+2. Initialize the plugin at the end of your `.zshrc` file:
+
+   ```shell
+   echo 'eval "$(zsh-patina activate)"' >> ~/.zshrc
+   ```
+
+3. Restart your terminal, or run:
+
+   ```shell
+   exec zsh
+   ```
 
 ### flake.nix (for Nix users)
 
