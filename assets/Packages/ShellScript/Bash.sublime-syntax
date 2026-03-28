@@ -186,6 +186,8 @@ contexts:
       set: [cmd-post, repeat-args]
     - match: \btime{{keyword_boundary_end}}
       scope: keyword.control.flow.time.shell
+    - match: \bnocorrect{{keyword_boundary_end}}
+      scope: keyword.control.flow.nocorrect.shell
 
   case-preamble:
     - match: \bin(?=[^\w_-])
