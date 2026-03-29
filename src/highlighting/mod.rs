@@ -31,13 +31,25 @@ const STRING_QUOTED_END: &str = "punctuation.definition.string.end.shell";
 const REDIRECTION: &str = "keyword.operator.assignment.redirection.shell";
 
 #[cfg(test)]
+const CONTROL_BREAK: &str = "keyword.control.break.shell";
+#[cfg(test)]
+const CONTROL_CASE: &str = "keyword.control.case.shell";
+#[cfg(test)]
+const CONTROL_CASE_ITEM: &str = "keyword.control.case.item.shell";
+#[cfg(test)]
 const CONTROL_DO: &str = "keyword.control.do.shell";
 #[cfg(test)]
 const CONTROL_DONE: &str = "keyword.control.done.shell";
 #[cfg(test)]
+const CONTROL_ESAC: &str = "keyword.control.esac.shell";
+#[cfg(test)]
+const CONTROL_IN: &str = "keyword.control.in.shell";
+#[cfg(test)]
 const CONTROL_NOCORRECT: &str = "keyword.control.flow.nocorrect.shell";
 #[cfg(test)]
 const CONTROL_REPEAT: &str = "keyword.control.flow.repeat.shell";
+#[cfg(test)]
+const CONTROL_SELECT: &str = "keyword.control.select.shell";
 #[cfg(test)]
 const CONTROL_TIME: &str = "keyword.control.flow.time.shell";
 #[cfg(test)]

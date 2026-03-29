@@ -17,3 +17,5 @@ Bash.sublime-syntax:
 * Add `keyword.control.repeat.shell` scope
 * Add `keyword.control.flow.time.shell` scope
 * Add `keyword.control.flow.nocorrect.shell` scope
+* Add `keyword.control.select.shell` scope
+* Add `select-args` context

@@ -191,6 +191,9 @@ contexts:
       scope: keyword.control.flow.time.shell
     - match: \bnocorrect{{keyword_boundary_end}}
       scope: keyword.control.flow.nocorrect.shell
+    - match: \bselect{{keyword_boundary_end}}
+      scope: keyword.control.select.shell
+      set: [cmd-post, select-args]
 
   case-preamble:
     - match: \bin(?=[^\w_-])
@@ -268,6 +271,16 @@ contexts:
     - match: ""
       set:
         - meta_scope: meta.group.for.shell
+        - include: cmd-args-boilerplate
+        - include: arithmetic
+        - match: \bin\b
+          scope: keyword.control.in.shell
+
+  # essentially a copy of for-args except for the name of the meta_scope
+  select-args:
+    - match: ""
+      set:
+        - meta_scope: meta.group.select.shell
         - include: cmd-args-boilerplate
         - include: arithmetic
         - match: \bin\b

@@ -1360,6 +1360,92 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn select() -> Result<()> {
+        let cfg = test_cfg()?;
+
+        let highlighted = cfg.highlight(r"select x in a b c; do echo $x; done")?;
+        assert_eq!(
+            highlighted,
+            vec![
+                cfg.static_span(0, 6, CONTROL_SELECT)?,
+                cfg.static_span(9, 11, CONTROL_IN)?,
+                cfg.static_span(17, 18, OPERATOR_LOGICAL_CONTINUE)?,
+                cfg.static_span(19, 21, CONTROL_DO)?,
+                cfg.dynamic_span(22, 26, "echo"),
+                cfg.static_span(27, 29, ENVIRONMENT_VARIABLE)?,
+                cfg.static_span(29, 30, OPERATOR_LOGICAL_CONTINUE)?,
+                cfg.static_span(31, 35, CONTROL_DONE)?,
+            ]
+        );
+
+        // without list
+        let highlighted = cfg.highlight(r"select x; do echo $x; done")?;
+        assert_eq!(
+            highlighted,
+            vec![
+                cfg.static_span(0, 6, CONTROL_SELECT)?,
+                cfg.static_span(8, 9, OPERATOR_LOGICAL_CONTINUE)?,
+                cfg.static_span(10, 12, CONTROL_DO)?,
+                cfg.dynamic_span(13, 17, "echo"),
+                cfg.static_span(18, 20, ENVIRONMENT_VARIABLE)?,
+                cfg.static_span(20, 21, OPERATOR_LOGICAL_CONTINUE)?,
+                cfg.static_span(22, 26, CONTROL_DONE)?,
+            ]
+        );
+
+        // with break
+        let highlighted = cfg.highlight(r"select x in a b; do break; done")?;
+        assert_eq!(
+            highlighted,
+            vec![
+                cfg.static_span(0, 6, CONTROL_SELECT)?,
+                cfg.static_span(9, 11, CONTROL_IN)?,
+                cfg.static_span(15, 16, OPERATOR_LOGICAL_CONTINUE)?,
+                cfg.static_span(17, 19, CONTROL_DO)?,
+                cfg.static_span(20, 25, CONTROL_BREAK)?,
+                cfg.static_span(25, 26, OPERATOR_LOGICAL_CONTINUE)?,
+                cfg.static_span(27, 31, CONTROL_DONE)?,
+            ]
+        );
+
+        // newlines instead of semicolons
+        let highlighted = cfg.highlight("select x in a b\ndo\necho $x\ndone")?;
+        assert_eq!(
+            highlighted,
+            vec![
+                cfg.static_span(0, 6, CONTROL_SELECT)?,
+                cfg.static_span(9, 11, CONTROL_IN)?,
+                cfg.static_span(16, 18, CONTROL_DO)?,
+                cfg.dynamic_span(19, 23, "echo"),
+                cfg.static_span(24, 26, ENVIRONMENT_VARIABLE)?,
+                cfg.static_span(27, 31, CONTROL_DONE)?,
+            ]
+        );
+
+        // select with case
+        let highlighted =
+            cfg.highlight(r"select x in a b; do case $x in a) echo yes;; esac; done")?;
+        assert_eq!(
+            highlighted,
+            vec![
+                cfg.static_span(0, 6, CONTROL_SELECT)?,
+                cfg.static_span(9, 11, CONTROL_IN)?,
+                cfg.static_span(15, 16, OPERATOR_LOGICAL_CONTINUE)?,
+                cfg.static_span(17, 19, CONTROL_DO)?,
+                cfg.static_span(20, 24, CONTROL_CASE)?,
+                cfg.static_span(25, 27, ENVIRONMENT_VARIABLE)?,
+                cfg.static_span(28, 30, CONTROL_IN)?,
+                cfg.static_span(32, 33, CONTROL_CASE_ITEM)?,
+                cfg.dynamic_span(34, 38, "echo"),
+                cfg.static_span(45, 50, CONTROL_ESAC)?,
+                cfg.static_span(51, 55, CONTROL_DONE)?,
+            ]
+        );
+
+        Ok(())
+    }
+
     fn static_span_with(
         start: usize,
         end: usize,
